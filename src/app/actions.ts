@@ -36,10 +36,15 @@ export const signUpAction = async (formData: FormData) => {
     },
   });
 
-  console.log("After signUp", error);
+  // Only log in development mode
+  if (process.env.NODE_ENV === 'development') {
+    console.log("After signUp", error);
+  }
 
   if (error) {
-    console.error(error.code + " " + error.message);
+    if (process.env.NODE_ENV === 'development') {
+      console.error(error.code + " " + error.message);
+    }
     return encodedRedirect("error", "/sign-up", error.message);
   }
 
@@ -167,15 +172,23 @@ export const signOutAction = async () => {
 // ========== ADMIN AUTH ACTIONS ==========
 export const adminAuthAction = async (formData: FormData) => {
   const passcode = formData.get("passcode")?.toString();
+  
+  // Use environment variable for admin passcode - NEVER hardcode passwords!
+  const adminPasscode = process.env.ADMIN_PASSCODE || process.env.NEXT_PUBLIC_ADMIN_PASSCODE;
+  
+  if (!adminPasscode) {
+    console.error("SECURITY ERROR: Admin passcode not configured in environment variables");
+    return encodedRedirect("error", "/admin", "Admin authentication not configured");
+  }
 
-  if (passcode === "12345") {
+  if (passcode === adminPasscode) {
     const { cookies } = await import("next/headers");
     const cookieStore = cookies();
     cookieStore.set("admin-auth", "true", {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "strict",
-      maxAge: 60 * 60 * 24, // 24 hours
+      maxAge: 60 * 60 * 8, // Reduced from 24 hours to 8 hours for better security
     });
     return redirect("/admin");
   } else {
