@@ -51,20 +51,27 @@
     "tailwindcss-animate": "^1",
     "typescript": "^5"
   },
-  "name": "go-backend-main",
+  "name": "jobsheet-management-system",
   "version": "1.0.0",
   "main": "next.config.js",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/AmrendraTheCoder/go-backend-main.git"
+    "url": "git+https://github.com/AmrendraTheCoder/jobsheet-management-system.git"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": [
+    "jobsheet",
+    "management",
+    "nextjs",
+    "supabase",
+    "typescript",
+    "tailwindcss"
+  ],
+  "author": "Amrendra Singh",
+  "license": "MIT",
   "type": "commonjs",
   "bugs": {
-    "url": "https://github.com/AmrendraTheCoder/go-backend-main/issues"
+    "url": "https://github.com/AmrendraTheCoder/jobsheet-management-system/issues"
   },
-  "homepage": "https://github.com/AmrendraTheCoder/go-backend-main#readme",
-  "description": ""
+  "homepage": "https://github.com/AmrendraTheCoder/jobsheet-management-system#readme",
+  "description": "A digital job sheet management system built with Next.js, TypeScript, Tailwind CSS, and Supabase. Features include job sheet creation, tracking, admin dashboard, and invoice generation."
 }
