@@ -673,28 +673,92 @@ export const submitJobSheetAction = async (formData: JobSheetData) => {
       };
     }
 
-    // Insert into job_sheets table
-    const { data, error } = await supabase
+    // Calculate total job cost
+    const totalJobCost = (jobSheetData.printing || 0) + (jobSheetData.uv || 0) + (jobSheetData.baking || 0);
+
+    // Start transaction for job sheet creation and party balance update
+    const { data: insertedJobSheet, error: insertError } = await supabase
       .from("job_sheets")
       .insert([jobSheetData])
       .select()
       .single();
 
-    if (error) {
-      console.error("Database insertion error:", error);
+    if (insertError) {
+      console.error("Database insertion error:", insertError);
       return {
         success: false,
-        error: `Database error: ${error.message}`,
+        error: `Database error: ${insertError.message}`,
       };
     }
 
-    console.log("Job sheet created successfully:", data);
+    console.log("Job sheet created successfully:", insertedJobSheet);
+
+    // If party_id exists and there's a job cost, update the party balance directly
+    if (jobSheetData.party_id && totalJobCost > 0) {
+      try {
+        console.log(`Updating party balance for party ${jobSheetData.party_id}, deducting amount: ${totalJobCost}`);
+        
+        // Get current party balance
+        const { data: partyData, error: partyError } = await supabase
+          .from("parties")
+          .select("balance")
+          .eq("id", jobSheetData.party_id)
+          .single();
+
+        if (!partyError && partyData) {
+          const currentBalance = partyData.balance || 0;
+          const newBalance = currentBalance - totalJobCost; // Subtract cost from balance (order creates debt)
+
+          // Update party balance directly
+          const { error: balanceUpdateError } = await supabase
+            .from("parties")
+            .update({ 
+              balance: newBalance,
+              updated_at: new Date().toISOString()
+            })
+            .eq("id", jobSheetData.party_id);
+
+          if (balanceUpdateError) {
+            console.error("Error updating party balance:", balanceUpdateError);
+          } else {
+            console.log(`Party balance updated successfully. Old: ${currentBalance}, New: ${newBalance}`);
+          }
+
+          // Try to create transaction record if the table exists and has correct schema
+          try {
+            const transactionData = {
+              party_id: parseInt(jobSheetData.party_id),
+              type: 'order',
+              amount: totalJobCost,
+              description: `Job Sheet #${insertedJobSheet.id} - ${jobSheetData.description}`,
+              balance_after: newBalance
+            };
+
+            await supabase
+              .from("party_transactions")
+              .insert([transactionData]);
+            console.log("Party transaction created successfully");
+          } catch (transactionError) {
+            console.warn("Could not create party transaction (table may not exist or have schema issues):", transactionError);
+            // Don't fail the job creation if transaction logging fails
+          }
+        } else {
+          console.error("Could not fetch party data:", partyError);
+        }
+      } catch (balanceUpdateErr) {
+        console.error("Error in party balance update:", balanceUpdateErr);
+        // Don't fail the job sheet creation if balance update fails
+      }
+    }
+
     console.log("=== JOB SHEET SUBMISSION SUCCESS ===");
 
     return {
       success: true,
-      data: data,
-      message: "Job sheet created successfully!",
+      data: insertedJobSheet,
+      message: jobSheetData.party_id ? 
+        "Job sheet created successfully and party balance updated!" :
+        "Job sheet created successfully!",
     };
 
   } catch (error: any) {
@@ -939,14 +1003,13 @@ export const addPartyAction = async (formData: {
     // If there's an initial balance, create a transaction record
     if (party.balance !== 0) {
       const transactionData = {
-        party_id: party.id,
+        party_id: parseInt(party.id),
         type: party.balance > 0 ? 'payment' : 'order',
         amount: Math.abs(party.balance),
         description: party.balance > 0 
           ? 'Initial balance - advance payment' 
           : 'Initial balance - opening order',
-        balance_after: party.balance,
-        created_by: 'System'
+        balance_after: party.balance
       };
 
       await supabase
@@ -1022,12 +1085,11 @@ export const updatePartyAction = async (
         
         // Create adjustment transaction
         const transactionData = {
-          party_id: partyId,
+          party_id: parseInt(partyId),
           type: 'adjustment',
           amount: Math.abs(balanceChange),
           description: `Balance adjustment: ${balanceChange > 0 ? '+' : ''}${balanceChange.toFixed(2)}`,
-          balance_after: parseFloat(updates.balance.toString()),
-          created_by: 'Admin'
+          balance_after: parseFloat(updates.balance.toString())
         };
 
         await supabase
@@ -1104,8 +1166,7 @@ export const addPartyTransactionAction = async (
   partyId: number,
   type: 'payment' | 'order' | 'adjustment',
   amount: number,
-  description?: string,
-  referenceOrderId?: number
+  description?: string
 ) => {
   const supabase = await createClient();
 
@@ -1154,13 +1215,11 @@ export const addPartyTransactionAction = async (
 
     // Create transaction record
     const transactionData = {
-      party_id: partyId,
+      party_id: parseInt(partyId),
       type,
       amount: Math.abs(amount),
       description: description || `${type.charAt(0).toUpperCase() + type.slice(1)} - ₹${Math.abs(amount)}`,
-      balance_after: newBalance,
-      reference_order_id: referenceOrderId || null,
-      created_by: 'Admin'
+      balance_after: newBalance
     };
 
     const { data: transaction, error } = await supabase

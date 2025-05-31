@@ -6,17 +6,10 @@ export async function GET() {
   try {
     const supabase = await createClient();
     
+    // Simplified query to avoid schema issues
     const { data: parties, error } = await supabase
       .from('parties')
-      .select(`
-        *,
-        party_transactions:party_transactions(
-          id, type, amount, description, created_at
-        ),
-        party_orders:party_orders(
-          id, order_amount, description, status, created_at
-        )
-      `)
+      .select('*')
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -85,9 +78,8 @@ export async function POST(request: NextRequest) {
         amount: Math.abs(party.balance),
         description: party.balance > 0 
           ? 'Initial balance - advance payment' 
-          : 'Initial balance - opening order',
-        balance_after: party.balance,
-        created_by: 'System'
+          : 'Initial balance - opening balance',
+        balance_after: party.balance
       };
 
       await supabase
@@ -159,10 +151,9 @@ export async function PUT(request: NextRequest) {
         const transactionData = {
           party_id: id,
           type: 'adjustment',
-          amount: balanceChange,
+          amount: Math.abs(balanceChange),
           description: `Balance adjustment: ${balanceChange > 0 ? '+' : ''}${balanceChange.toFixed(2)}`,
-          balance_after: parseFloat(balance),
-          created_by: 'Admin'
+          balance_after: parseFloat(balance.toString())
         };
 
         await supabase

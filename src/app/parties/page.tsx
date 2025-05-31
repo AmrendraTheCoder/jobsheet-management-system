@@ -74,6 +74,7 @@ import {
   Bar,
   Pie,
 } from "recharts";
+import { PartyTransactionManagement } from "@/components/party-transaction-management";
 
 interface Party {
   id: number;
@@ -96,23 +97,12 @@ interface Transaction {
   created_at: string;
 }
 
-interface Order {
-  id: number;
-  party_id: number;
-  party_name: string;
-  order_amount: number;
-  description: string;
-  status: "pending" | "completed" | "cancelled";
-  created_at: string;
-}
-
 export default function PartiesPage() {
   const router = useRouter();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState("");
   const [parties, setParties] = useState<Party[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [orders, setOrders] = useState<Order[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
@@ -357,15 +347,25 @@ export default function PartiesPage() {
     party.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  // Calculate derived data from transactions
+  const orderTransactions = transactions.filter((t) => t.type === "order");
+  const paymentTransactions = transactions.filter((t) => t.type === "payment");
+
   const totalBalance = parties.reduce(
     (sum, party) => sum + (party.balance || 0),
     0
   );
   const partiesInDebt = parties.filter((party) => party.balance > 0).length;
   const partiesInCredit = parties.filter((party) => party.balance < 0).length;
-  const totalOrders = orders.length;
-  const totalRevenue = orders.reduce(
-    (sum, order) => sum + order.order_amount,
+
+  // Calculate totals from transactions instead of separate orders
+  const totalOrders = orderTransactions.length;
+  const totalRevenue = paymentTransactions.reduce(
+    (sum, transaction) => sum + transaction.amount,
+    0
+  );
+  const totalOrderValue = orderTransactions.reduce(
+    (sum, transaction) => sum + transaction.amount,
     0
   );
 
@@ -392,6 +392,27 @@ export default function PartiesPage() {
         new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     )
     .slice(0, 10);
+
+  // Add this function to get party-specific statistics
+  const getPartyStats = (partyId: number) => {
+    const partyTransactions = transactions.filter(
+      (t) => t.party_id === partyId
+    );
+    const partyOrders = partyTransactions.filter((t) => t.type === "order");
+    const partyPayments = partyTransactions.filter((t) => t.type === "payment");
+
+    return {
+      totalOrders: partyOrders.length,
+      totalOrderValue: partyOrders.reduce((sum, t) => sum + t.amount, 0),
+      totalPayments: partyPayments.reduce((sum, t) => sum + t.amount, 0),
+      lastTransactionDate:
+        partyTransactions.length > 0
+          ? Math.max(
+              ...partyTransactions.map((t) => new Date(t.created_at).getTime())
+            )
+          : null,
+    };
+  };
 
   if (!isAuthenticated) {
     return (
@@ -472,15 +493,16 @@ export default function PartiesPage() {
           onValueChange={setActiveTab}
           className="space-y-6"
         >
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="parties">Parties</TabsTrigger>
             <TabsTrigger value="transactions">Transactions</TabsTrigger>
+            <TabsTrigger value="transaction-mgmt">Transaction Mgmt</TabsTrigger>
             <TabsTrigger value="analytics">Analytics</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="space-y-6">
-            {/* Quick Stats */}
+            {/* Updated Quick Stats */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
               <Card>
                 <CardHeader className="pb-2">
@@ -525,6 +547,9 @@ export default function PartiesPage() {
                     {totalOrders}
                     <ShoppingCart className="w-5 h-5 text-orange-500" />
                   </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    ₹{totalOrderValue.toFixed(2)} value
+                  </p>
                 </CardContent>
               </Card>
 
@@ -538,6 +563,9 @@ export default function PartiesPage() {
                   <div className="text-2xl font-bold text-green-600">
                     ₹{totalRevenue.toFixed(2)}
                   </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    From {paymentTransactions.length} payments
+                  </p>
                 </CardContent>
               </Card>
 
@@ -690,10 +718,20 @@ export default function PartiesPage() {
                       </div>
                       <div className="text-right">
                         <p
-                          className={`font-semibold ${transaction.amount >= 0 ? "text-green-600" : "text-red-600"}`}
+                          className={`font-semibold ${
+                            transaction.type === "payment"
+                              ? "text-green-600"
+                              : transaction.type === "order"
+                                ? "text-blue-600"
+                                : "text-orange-600"
+                          }`}
                         >
-                          {transaction.amount >= 0 ? "+" : ""}₹
-                          {Math.abs(transaction.amount).toFixed(2)}
+                          {transaction.type === "payment"
+                            ? "+"
+                            : transaction.type === "order"
+                              ? "-"
+                              : "±"}
+                          ₹{transaction.amount.toFixed(2)}
                         </p>
                         <p className="text-sm text-gray-500">
                           {new Date(
@@ -745,104 +783,121 @@ export default function PartiesPage() {
                         <TableHead>Party Name</TableHead>
                         <TableHead>Current Balance</TableHead>
                         <TableHead>Total Orders</TableHead>
+                        <TableHead>Order Value</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Last Transaction</TableHead>
                         <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredParties.map((party) => (
-                        <TableRow key={party.id}>
-                          <TableCell className="font-medium">
-                            {party.name}
-                          </TableCell>
-                          <TableCell>
-                            <span
-                              className={`font-semibold ${
-                                party.balance > 0
-                                  ? "text-red-600"
+                      {filteredParties.map((party) => {
+                        const stats = getPartyStats(party.id);
+                        return (
+                          <TableRow key={party.id}>
+                            <TableCell className="font-medium">
+                              {party.name}
+                            </TableCell>
+                            <TableCell>
+                              <span
+                                className={`font-semibold ${
+                                  party.balance > 0
+                                    ? "text-red-600"
+                                    : party.balance < 0
+                                      ? "text-green-600"
+                                      : "text-gray-600"
+                                }`}
+                              >
+                                ₹{Math.abs(party.balance).toFixed(2)}
+                                {party.balance > 0
+                                  ? " (Owe us)"
                                   : party.balance < 0
-                                    ? "text-green-600"
-                                    : "text-gray-600"
-                              }`}
-                            >
-                              ₹{Math.abs(party.balance).toFixed(2)}
-                              {party.balance > 0
-                                ? " (Owe us)"
-                                : party.balance < 0
-                                  ? " (We owe)"
-                                  : ""}
-                            </span>
-                          </TableCell>
-                          <TableCell>{party.total_orders || 0}</TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={
-                                party.balance > 0
-                                  ? "destructive"
+                                    ? " (We owe)"
+                                    : ""}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              <span className="font-medium">
+                                {stats.totalOrders}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              <span className="font-medium text-blue-600">
+                                ₹{stats.totalOrderValue.toFixed(2)}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                variant={
+                                  party.balance > 0
+                                    ? "destructive"
+                                    : party.balance < 0
+                                      ? "default"
+                                      : "secondary"
+                                }
+                              >
+                                {party.balance > 0
+                                  ? "Outstanding"
                                   : party.balance < 0
-                                    ? "default"
-                                    : "secondary"
-                              }
-                            >
-                              {party.balance > 0
-                                ? "Outstanding"
-                                : party.balance < 0
-                                  ? "Advance"
-                                  : "Settled"}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-sm text-gray-500">
-                            {party.last_transaction_date
-                              ? new Date(
-                                  party.last_transaction_date
-                                ).toLocaleDateString()
-                              : "No transactions"}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex justify-end gap-2">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                  setSelectedParty(party);
-                                  setShowPaymentDialog(true);
-                                }}
-                              >
-                                <CreditCard className="w-4 h-4" />
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                  setSelectedParty(party);
-                                  setShowOrderDialog(true);
-                                }}
-                              >
-                                <ShoppingCart className="w-4 h-4" />
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                  setEditingParty(party);
-                                  setShowEditDialog(true);
-                                }}
-                              >
-                                <Edit className="w-4 h-4" />
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setDeletePartyId(party.id)}
-                                className="text-red-600 hover:text-red-700"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                                    ? "Advance"
+                                    : "Settled"}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-sm text-gray-500">
+                              {stats.lastTransactionDate
+                                ? new Date(
+                                    stats.lastTransactionDate
+                                  ).toLocaleDateString()
+                                : "No transactions"}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex justify-end gap-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedParty(party);
+                                    setShowPaymentDialog(true);
+                                  }}
+                                  title="Add Payment"
+                                >
+                                  <CreditCard className="w-4 h-4" />
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedParty(party);
+                                    setShowOrderDialog(true);
+                                  }}
+                                  title="Create Order"
+                                >
+                                  <ShoppingCart className="w-4 h-4" />
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    setEditingParty(party);
+                                    setShowEditDialog(true);
+                                  }}
+                                  title="Edit Party"
+                                >
+                                  <Edit className="w-4 h-4" />
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setDeletePartyId(party.id)}
+                                  className="text-red-600 hover:text-red-700"
+                                  title="Delete Party"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 )}
@@ -933,6 +988,10 @@ export default function PartiesPage() {
                 </Table>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="transaction-mgmt" className="space-y-6">
+            <PartyTransactionManagement />
           </TabsContent>
 
           <TabsContent value="analytics" className="space-y-6">
@@ -1051,13 +1110,19 @@ export default function PartiesPage() {
 
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-lg">Monthly Summary</CardTitle>
+                  <CardTitle className="text-lg">Summary Statistics</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
                     <div className="flex justify-between">
                       <span>Total Orders:</span>
                       <span className="font-semibold">{totalOrders}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Order Value:</span>
+                      <span className="font-semibold text-blue-600">
+                        ₹{totalOrderValue.toFixed(2)}
+                      </span>
                     </div>
                     <div className="flex justify-between">
                       <span>Total Revenue:</span>

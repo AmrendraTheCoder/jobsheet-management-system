@@ -28,7 +28,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json(transactions || []);
+    // Transform the data to include party_name for easier access
+    const transformedTransactions = transactions?.map(transaction => ({
+      ...transaction,
+      party_name: transaction.party?.name || 'Unknown Party'
+    })) || [];
+
+    return NextResponse.json(transformedTransactions);
   } catch (error: any) {
     console.error('Exception in GET /api/parties/transactions:', error);
     return NextResponse.json(
@@ -38,13 +44,13 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST - Create new transaction (payment or order)
+// POST - Create new transaction
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
     const body = await request.json();
     
-    const { party_id, type, amount, description, reference_order_id } = body;
+    const { party_id, type, amount, description } = body;
 
     // Validate required fields
     if (!party_id || !type || !amount) {
@@ -54,15 +60,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate transaction type
     if (!['payment', 'order', 'adjustment'].includes(type)) {
       return NextResponse.json(
-        { error: 'Invalid transaction type. Must be payment, order, or adjustment' },
+        { error: 'Invalid transaction type' },
         { status: 400 }
       );
     }
 
-    // Validate amount
     const transactionAmount = parseFloat(amount);
     if (isNaN(transactionAmount) || transactionAmount <= 0) {
       return NextResponse.json(
@@ -74,7 +78,7 @@ export async function POST(request: NextRequest) {
     // Get current party balance
     const { data: party, error: partyError } = await supabase
       .from('parties')
-      .select('balance')
+      .select('balance, name')
       .eq('id', party_id)
       .single();
 
@@ -107,9 +111,7 @@ export async function POST(request: NextRequest) {
       type,
       amount: Math.abs(transactionAmount),
       description: description || `${type.charAt(0).toUpperCase() + type.slice(1)} - ₹${Math.abs(transactionAmount)}`,
-      balance_after: newBalance,
-      reference_order_id: reference_order_id || null,
-      created_by: 'Admin'
+      balance_after: newBalance
     };
 
     const { data: transaction, error } = await supabase
@@ -126,7 +128,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json(transaction, { status: 201 });
+    // Update party balance
+    const { error: updateError } = await supabase
+      .from('parties')
+      .update({ balance: newBalance })
+      .eq('id', party_id);
+
+    if (updateError) {
+      console.error('Error updating party balance:', updateError);
+      return NextResponse.json({ error: updateError.message }, { status: 500 });
+    }
+
+    // Transform response to include party_name
+    const responseData = {
+      ...transaction,
+      party_name: transaction.party?.name || party.name
+    };
+
+    return NextResponse.json(responseData, { status: 201 });
   } catch (error: any) {
     console.error('Exception in POST /api/parties/transactions:', error);
     return NextResponse.json(

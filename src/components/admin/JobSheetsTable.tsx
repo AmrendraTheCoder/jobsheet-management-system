@@ -689,7 +689,7 @@ export default function JobSheetsTable({
                   <p className="text-gray-600">Total Sheets</p>
                   <p className="font-semibold">
                     {filteredJobSheets
-                      .reduce((sum, sheet) => sum + (sheet.sheet || 0), 0)
+                      .reduce((sum, sheet) => sum + (sheet.paper_sheet || 0), 0)
                       .toLocaleString()}
                   </p>
                 </div>

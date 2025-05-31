@@ -6,23 +6,11 @@ import {
   TrendingUp,
   Calendar,
   Layers,
-  BarChart3,
   Activity,
   Target,
-  Banknote, // Replace DollarSign with Banknote
+  Banknote,
 } from "lucide-react";
 import { JobSheetStats, JobSheetChartData } from "@/types/jobsheet";
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-} from "recharts";
 
 interface JobSheetDashboardStatsProps {
   stats: JobSheetStats;
@@ -33,6 +21,14 @@ export default function JobSheetDashboardStats({
   stats,
   chartData,
 }: JobSheetDashboardStatsProps) {
+  // Debug logging
+  console.log("JobSheetDashboardStats received:", {
+    stats,
+    chartData,
+    chartDataLength: chartData?.length,
+    hasValidData: chartData?.some((d) => d.revenue > 0 || d.jobs > 0),
+  });
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-IN", {
       style: "currency",
@@ -57,6 +53,9 @@ export default function JobSheetDashboardStats({
     if (growth < 0) return "↘️";
     return "➡️";
   };
+
+  // Use provided chart data directly since parent component handles fallback
+  const displayChartData = chartData || [];
 
   return (
     <div className="space-y-6 mt-8">
@@ -144,108 +143,6 @@ export default function JobSheetDashboardStats({
               <span className="text-sm text-gray-500">
                 vs {stats.lastMonthJobs} last month
               </span>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-      {/* Charts Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Revenue Trend Chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-green-600" />
-              Revenue Trend
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis
-                    dataKey="month"
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fontSize: 12, fill: "#666" }}
-                  />
-                  <YAxis
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fontSize: 12, fill: "#666" }}
-                    tickFormatter={(value) => `₹${(value / 1000).toFixed(0)}K`}
-                  />
-                  <Tooltip
-                    formatter={(value: number) => [
-                      formatCurrency(value),
-                      "Revenue",
-                    ]}
-                    labelStyle={{ color: "#333" }}
-                    contentStyle={{
-                      backgroundColor: "#fff",
-                      border: "1px solid #ccc",
-                      borderRadius: "8px",
-                    }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="revenue"
-                    stroke="#10b981"
-                    strokeWidth={3}
-                    dot={{ fill: "#10b981", strokeWidth: 2, r: 4 }}
-                    activeDot={{ r: 6, fill: "#10b981" }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Job Sheets Processed Chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <BarChart3 className="w-5 h-5 text-blue-600" />
-              Jobs & Sheets Processed
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis
-                    dataKey="month"
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fontSize: 12, fill: "#666" }}
-                  />
-                  <YAxis
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fontSize: 12, fill: "#666" }}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "#fff",
-                      border: "1px solid #ccc",
-                      borderRadius: "8px",
-                    }}
-                  />
-                  <Bar
-                    dataKey="jobs"
-                    fill="#3b82f6"
-                    name="Job Sheets"
-                    radius={[4, 4, 0, 0]}
-                  />
-                  <Bar
-                    dataKey="sheets"
-                    fill="#8b5cf6"
-                    name="Sheets Processed"
-                    radius={[4, 4, 0, 0]}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
             </div>
           </CardContent>
         </Card>

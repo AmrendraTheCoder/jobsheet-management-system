@@ -143,27 +143,58 @@ export default function EnhancedJobSheetForm() {
     fetchPaperTypes();
   }, []);
 
+  // Fetch parties from database
   const fetchParties = async () => {
     try {
       const response = await fetch("/api/parties");
       if (response.ok) {
-        const data = await response.json();
-        setParties(Array.isArray(data) ? data : []);
+        const result = await response.json();
+        // Handle both array response and object with data property
+        const partiesData = Array.isArray(result)
+          ? result
+          : result.data || result;
+        setParties(partiesData || []);
+
+        if (partiesData.length === 0) {
+          console.log("No parties found in database");
+        }
+      } else {
+        console.error("Failed to fetch parties:", response.status);
+        setParties([]);
       }
     } catch (error) {
       console.error("Error fetching parties:", error);
+      setParties([]);
     }
   };
 
+  // Fetch paper types from database
   const fetchPaperTypes = async () => {
     try {
       const response = await fetch("/api/paper-types");
       if (response.ok) {
-        const data = await response.json();
-        setPaperTypes(Array.isArray(data) ? data : []);
+        const result = await response.json();
+        if (result.success && result.data) {
+          setPaperTypes(result.data || []);
+
+          if (result.data.length === 0) {
+            console.log("No paper types found in database");
+          }
+        } else {
+          console.log("Paper types API returned unsuccessful response");
+          setPaperTypes([]);
+        }
+      } else {
+        console.log(
+          "Paper types API not available or returned error:",
+          response.status
+        );
+        setPaperTypes([]);
       }
     } catch (error) {
       console.error("Error fetching paper types:", error);
+      // Continue without paper types if API doesn't exist
+      setPaperTypes([]);
     }
   };
 
@@ -171,38 +202,8 @@ export default function EnhancedJobSheetForm() {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handlePartyChange = (value: string) => {
-    if (value === "new") {
-      setShowNewPartyDialog(true);
-    } else {
-      const party = parties.find((p) => p.id.toString() === value);
-      if (party) {
-        setSelectedParty(party);
-        setFormData((prev) => ({
-          ...prev,
-          party_id: party.id,
-          party_name: party.name,
-        }));
-      }
-    }
-  };
-
-  const handlePaperTypeChange = (value: string) => {
-    if (value === "new") {
-      setShowNewPaperTypeDialog(true);
-    } else {
-      const paperTypeObj = paperTypes.find((p) => p.id.toString() === value);
-      if (paperTypeObj) {
-        setFormData((prev) => ({
-          ...prev,
-          paper_type_id: paperTypeObj.id,
-          gsm: paperTypeObj.gsm.toString(),
-        }));
-      }
-    }
-  };
-
-  const createNewParty = async () => {
+  // Add new party
+  const handleAddNewParty = async () => {
     if (!newPartyName.trim()) return;
 
     try {
@@ -217,24 +218,46 @@ export default function EnhancedJobSheetForm() {
 
       if (response.ok) {
         const newParty = await response.json();
-        setParties([...parties, newParty]);
+        // API returns the new party object directly
+        // Update parties list
+        await fetchParties();
+        // Select the new party
         setSelectedParty(newParty);
-        setFormData((prev) => ({
-          ...prev,
-          party_id: newParty.id,
-          party_name: newParty.name,
-        }));
-        setShowNewPartyDialog(false);
+        updateFormData("party_name", newParty.name);
+        updateFormData("party_id", newParty.id.toString());
+        // Reset form
         setNewPartyName("");
         setNewPartyBalance("");
+        setShowNewPartyDialog(false);
+
+        // Show success message
+        setSubmitStatus({
+          type: "success",
+          message: `Party "${newParty.name}" has been created successfully!`,
+        });
+      } else {
+        // Handle error response
+        const errorData = await response
+          .json()
+          .catch(() => ({ error: "Unknown error" }));
+        console.error("Failed to create party:", response.status, errorData);
+        setSubmitStatus({
+          type: "error",
+          message: `Failed to create party: ${errorData.error || "Unknown error"}`,
+        });
       }
-    } catch (error) {
-      console.error("Error creating party:", error);
+    } catch (error: any) {
+      console.error("Error adding new party:", error);
+      setSubmitStatus({
+        type: "error",
+        message: `Network error: ${error.message || "Unknown error"}`,
+      });
     }
   };
 
-  const createNewPaperType = async () => {
-    if (!newPaperType.name.trim() || !newPaperType.gsm) return;
+  // Add new paper type
+  const handleAddNewPaperType = async () => {
+    if (!newPaperType.name.trim()) return;
 
     try {
       const response = await fetch("/api/paper-types", {
@@ -242,22 +265,28 @@ export default function EnhancedJobSheetForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: newPaperType.name.trim(),
+          gsm: parseInt(newPaperType.gsm) || null,
         }),
       });
 
       if (response.ok) {
-        const paperTypeObj = await response.json();
-        setPaperTypes([...paperTypes, paperTypeObj]);
-        setFormData((prev) => ({
-          ...prev,
-          paper_type_id: paperTypeObj.id,
-          gsm: paperTypeObj.gsm.toString(),
-        }));
-        setShowNewPaperTypeDialog(false);
-        setNewPaperType({ name: "", gsm: "" });
+        const result = await response.json();
+        if (result.success && result.data) {
+          // Update paper types list
+          await fetchPaperTypes();
+          // Select the new paper type
+          updateFormData("paper_type_id", result.data.id.toString());
+          // Set GSM if provided
+          if (result.data.gsm) {
+            updateFormData("gsm", result.data.gsm.toString());
+          }
+          // Clear form and close dialog
+          setNewPaperType({ name: "", gsm: "" });
+          setShowNewPaperTypeDialog(false);
+        }
       }
     } catch (error) {
-      console.error("Error creating paper type:", error);
+      console.error("Error adding new paper type:", error);
     }
   };
 
@@ -302,6 +331,16 @@ export default function EnhancedJobSheetForm() {
     setIsSubmitting(true);
     setSubmitStatus({ type: null, message: "" });
 
+    // Validate required fields
+    if (!selectedParty?.id && !formData.party_name) {
+      setSubmitStatus({
+        type: "error",
+        message: "Please select a party or enter a party name.",
+      });
+      setIsSubmitting(false);
+      return;
+    }
+
     const printingCost = calculatePrintingCost();
     const totalAmount =
       parseFloat(printingCost) +
@@ -312,14 +351,18 @@ export default function EnhancedJobSheetForm() {
       ...formData,
       printing: printingCost,
       party_id: selectedParty?.id || null,
-      paper_type_id: formData.paper_type_id || null,
-      job_type: formData.job_type,
+      paper_type_id: formData.paper_type_id
+        ? parseInt(formData.paper_type_id.toString())
+        : null,
+      job_type: formData.job_type || "single-single",
       gsm: formData.gsm ? parseInt(formData.gsm) : null,
       paper_provided_by_party: paperProvidedByParty,
       paper_type: paperProvidedByParty ? paperType : null,
       paper_size: paperProvidedByParty ? paperSize : null,
-      paper_gsm: paperProvidedByParty ? parseInt(paperGSM) : null,
+      paper_gsm: paperProvidedByParty && paperGSM ? parseInt(paperGSM) : null,
     };
+
+    console.log("Submitting job sheet data:", submissionData);
 
     try {
       const result = await submitJobSheetAction(submissionData);
@@ -350,9 +393,10 @@ export default function EnhancedJobSheetForm() {
         });
       }
     } catch (error: any) {
+      console.error("Form submission error:", error);
       setSubmitStatus({
         type: "error",
-        message: `System error: ${error.message || "Unknown error"}`,
+        message: `System error: ${error.message || "Unknown error occurred"}`,
       });
     } finally {
       setIsSubmitting(false);
@@ -514,13 +558,26 @@ export default function EnhancedJobSheetForm() {
                     >
                       Party Name *
                     </Label>
-                    <div className="flex gap-2 mt-1">
+                    <div className="mt-1">
                       <Select
-                        value={formData.party_id?.toString() || ""}
-                        onValueChange={handlePartyChange}
+                        value={selectedParty?.id.toString() || ""}
+                        onValueChange={(value) => {
+                          if (value === "new") {
+                            setShowNewPartyDialog(true);
+                          } else {
+                            const party = parties.find(
+                              (p) => p.id.toString() === value
+                            );
+                            if (party) {
+                              setSelectedParty(party);
+                              updateFormData("party_name", party.name);
+                              updateFormData("party_id", party.id.toString());
+                            }
+                          }
+                        }}
                       >
                         <SelectTrigger className="border-gray-300 focus:border-gray-500">
-                          <SelectValue placeholder="Select a party" />
+                          <SelectValue placeholder="Select a party or create new" />
                         </SelectTrigger>
                         <SelectContent>
                           {parties.map((party) => (
@@ -528,19 +585,27 @@ export default function EnhancedJobSheetForm() {
                               key={party.id}
                               value={party.id.toString()}
                             >
-                              {party.name} (Balance: ₹{party.balance.toFixed(2)}
-                              )
+                              <div className="flex flex-col">
+                                <span className="font-medium">
+                                  {party.name}
+                                </span>
+                                <span className="text-xs text-gray-500">
+                                  Balance: ₹{party.balance.toFixed(2)}
+                                  {party.phone && ` • ${party.phone}`}
+                                </span>
+                              </div>
                             </SelectItem>
                           ))}
                           <SelectItem value="new">
-                            <div className="flex items-center gap-2 text-blue-600">
+                            <div className="flex items-center gap-2">
                               <Plus className="w-4 h-4" />
-                              Add New Party
+                              <span>Add New Party</span>
                             </div>
                           </SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
+
                     {selectedParty && (
                       <div className="mt-2 p-3 bg-blue-50 rounded-lg">
                         <p className="text-sm text-blue-700">
@@ -550,6 +615,11 @@ export default function EnhancedJobSheetForm() {
                         {selectedParty.phone && (
                           <p className="text-sm text-blue-600">
                             Phone: {selectedParty.phone}
+                          </p>
+                        )}
+                        {selectedParty.email && (
+                          <p className="text-sm text-blue-600">
+                            Email: {selectedParty.email}
                           </p>
                         )}
                       </div>
@@ -711,7 +781,20 @@ export default function EnhancedJobSheetForm() {
                     </Label>
                     <Select
                       value={formData.paper_type_id?.toString() || ""}
-                      onValueChange={handlePaperTypeChange}
+                      onValueChange={(value) => {
+                        if (value === "new") {
+                          setShowNewPaperTypeDialog(true);
+                        } else {
+                          updateFormData("paper_type_id", value);
+                          // Find selected paper type to update GSM if available
+                          const selectedType = paperTypes.find(
+                            (type) => type.id.toString() === value
+                          );
+                          if (selectedType) {
+                            updateFormData("gsm", selectedType.gsm.toString());
+                          }
+                        }
+                      }}
                     >
                       <SelectTrigger className="border-gray-300 focus:border-gray-500 mt-1">
                         <SelectValue placeholder="Select paper type" />
@@ -719,7 +802,7 @@ export default function EnhancedJobSheetForm() {
                       <SelectContent>
                         {paperTypes.map((type) => (
                           <SelectItem key={type.id} value={type.id.toString()}>
-                            {type.name}
+                            {type.name} ({type.gsm} GSM)
                           </SelectItem>
                         ))}
                         <SelectItem value="new">
@@ -1318,17 +1401,28 @@ export default function EnhancedJobSheetForm() {
           <DialogHeader>
             <DialogTitle>Add New Party</DialogTitle>
             <DialogDescription>
-              Create a new party for your job sheets.
+              Create a new party to add to the job sheet.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="new-party-name">Party Name</Label>
+              <Label htmlFor="new-party-name">Party Name *</Label>
               <Input
                 id="new-party-name"
                 value={newPartyName}
                 onChange={(e) => setNewPartyName(e.target.value)}
                 placeholder="Enter party name"
+              />
+            </div>
+            <div>
+              <Label htmlFor="new-party-balance">Initial Balance</Label>
+              <Input
+                id="new-party-balance"
+                type="number"
+                step="0.01"
+                value={newPartyBalance}
+                onChange={(e) => setNewPartyBalance(e.target.value)}
+                placeholder="0.00"
               />
             </div>
           </div>
@@ -1338,12 +1432,13 @@ export default function EnhancedJobSheetForm() {
               onClick={() => {
                 setShowNewPartyDialog(false);
                 setNewPartyName("");
+                setNewPartyBalance("");
               }}
             >
               Cancel
             </Button>
-            <Button onClick={createNewParty} disabled={!newPartyName.trim()}>
-              Create Party
+            <Button onClick={handleAddNewParty} disabled={!newPartyName.trim()}>
+              Add Party
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1358,31 +1453,31 @@ export default function EnhancedJobSheetForm() {
           <DialogHeader>
             <DialogTitle>Add New Paper Type</DialogTitle>
             <DialogDescription>
-              Create a new paper type for your job sheets.
+              Create a new paper type for the job sheet.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="new-paper-name">Paper Type Name</Label>
+              <Label htmlFor="new-paper-type-name">Paper Type Name *</Label>
               <Input
-                id="new-paper-name"
+                id="new-paper-type-name"
                 value={newPaperType.name}
                 onChange={(e) =>
                   setNewPaperType({ ...newPaperType, name: e.target.value })
                 }
-                placeholder="e.g., Maplitho, Art Paper"
+                placeholder="e.g., Matte, Glossy, Art Paper"
               />
             </div>
             <div>
-              <Label htmlFor="new-paper-gsm">GSM</Label>
+              <Label htmlFor="new-paper-type-gsm">GSM</Label>
               <Input
-                id="new-paper-gsm"
+                id="new-paper-type-gsm"
                 type="number"
                 value={newPaperType.gsm}
                 onChange={(e) =>
                   setNewPaperType({ ...newPaperType, gsm: e.target.value })
                 }
-                placeholder="e.g., 80, 100, 130"
+                placeholder="e.g., 150"
               />
             </div>
           </div>
@@ -1397,10 +1492,10 @@ export default function EnhancedJobSheetForm() {
               Cancel
             </Button>
             <Button
-              onClick={createNewPaperType}
-              disabled={!newPaperType.name.trim() || !newPaperType.gsm}
+              onClick={handleAddNewPaperType}
+              disabled={!newPaperType.name.trim()}
             >
-              Create Paper Type
+              Add Paper Type
             </Button>
           </DialogFooter>
         </DialogContent>

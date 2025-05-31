@@ -16,7 +16,9 @@ export async function GET() {
         parties!job_sheets_party_id_fkey (
           id,
           name,
-          balance
+          balance,
+          phone,
+          email
         ),
         paper_types!job_sheets_paper_type_id_fkey (
           id,
@@ -53,7 +55,7 @@ export async function GET() {
           if (sheet.party_id) {
             const { data: party } = await supabase
               .from("parties")
-              .select("id, name, balance")
+              .select("id, name, balance, phone, email")
               .eq("id", sheet.party_id)
               .single();
             partyData = party;
@@ -78,15 +80,23 @@ export async function GET() {
       );
       
       // Transform the enriched data
-      const transformedData = enrichedData.map(sheet => ({
-        ...sheet,
-        party_name: sheet.parties?.name || sheet.party_name || null,
-        party_balance: sheet.parties?.balance || null,
-        paper_type_name: sheet.paper_types?.name || null,
-        paper_type_gsm: sheet.paper_types?.gsm || null,
-        created_at: sheet.created_at || new Date().toISOString(),
-        updated_at: sheet.updated_at || new Date().toISOString(),
-      }));
+      const transformedData = enrichedData.map(sheet => {
+        const totalCost = (sheet.printing || 0) + (sheet.uv || 0) + (sheet.baking || 0);
+        
+        return {
+          ...sheet,
+          party_name: sheet.parties?.name || sheet.party_name || null,
+          party_balance: sheet.parties?.balance || null,
+          party_balance_after: sheet.parties?.balance || null, // Current balance
+          party_phone: sheet.parties?.phone || null,
+          party_email: sheet.parties?.email || null,
+          paper_type_name: sheet.paper_types?.name || null,
+          paper_type_gsm: sheet.paper_types?.gsm || null,
+          total_cost: totalCost,
+          created_at: sheet.created_at || new Date().toISOString(),
+          updated_at: sheet.updated_at || new Date().toISOString(),
+        };
+      });
       
       return NextResponse.json({
         success: true,
@@ -96,15 +106,23 @@ export async function GET() {
     }
 
     // Transform the data to flatten the joins
-    const transformedData = data?.map(sheet => ({
-      ...sheet,
-      party_name: sheet.parties?.name || sheet.party_name || null,
-      party_balance: sheet.parties?.balance || null,
-      paper_type_name: sheet.paper_types?.name || null,
-      paper_type_gsm: sheet.paper_types?.gsm || null,
-      created_at: sheet.created_at || new Date().toISOString(),
-      updated_at: sheet.updated_at || new Date().toISOString(),
-    })) || [];
+    const transformedData = data?.map(sheet => {
+      const totalCost = (sheet.printing || 0) + (sheet.uv || 0) + (sheet.baking || 0);
+      
+      return {
+        ...sheet,
+        party_name: sheet.parties?.name || sheet.party_name || null,
+        party_balance: sheet.parties?.balance || null,
+        party_balance_after: sheet.parties?.balance || null, // Current balance
+        party_phone: sheet.parties?.phone || null,
+        party_email: sheet.parties?.email || null,
+        paper_type_name: sheet.paper_types?.name || null,
+        paper_type_gsm: sheet.paper_types?.gsm || null,
+        total_cost: totalCost,
+        created_at: sheet.created_at || new Date().toISOString(),
+        updated_at: sheet.updated_at || new Date().toISOString(),
+      };
+    }) || [];
 
     console.log("Job sheets fetched successfully:", transformedData.length, "records");
     console.log("Sample transformed data:", transformedData[0]);

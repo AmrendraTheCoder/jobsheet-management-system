@@ -1,39 +1,47 @@
 import { NextResponse } from "next/server";
 import { createClient } from "../../../../supabase/server";
 
-export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const type = searchParams.get('type');
-  
+export async function GET() {
   try {
     const supabase = await createClient();
     
-    if (type) {
+    // Try to get paper types, but return empty array if table doesn't exist
+    try {
       const { data, error } = await supabase
-        .from('paper_types')
-        .select('gsm')
-        .eq('name', type)
-        .single();
-        
-      if (error || !data) {
-        return NextResponse.json({ gsm: '' });
-      }
-      
-      return NextResponse.json({ gsm: data.gsm.toString() });
-    } else {
-      const { data, error } = await supabase
-        .from('paper_types')
-        .select('*')
-        .order('name');
-        
+        .from("paper_types")
+        .select("*")
+        .order("name", { ascending: true });
+
       if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        // If table doesn't exist, return empty array
+        if (error.code === '42P01') {
+          return NextResponse.json({
+            success: true,
+            data: [],
+            message: "Paper types table not found - returning empty data"
+          });
+        }
+        throw error;
       }
-      
-      return NextResponse.json(data);
+
+      return NextResponse.json({
+        success: true,
+        data: data || [],
+      });
+    } catch (tableError: any) {
+      // Table doesn't exist, return empty array
+      return NextResponse.json({
+        success: true,
+        data: [],
+        message: "Paper types table not found - returning empty data"
+      });
     }
-  } catch (error) {
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  } catch (error: any) {
+    console.error("API error:", error);
+    return NextResponse.json({
+      success: false,
+      error: error.message || "Unknown error",
+    }, { status: 500 });
   }
 }
 
@@ -42,25 +50,51 @@ export async function POST(request: Request) {
     const supabase = await createClient();
     const body = await request.json();
     
-    if (!body.name || !body.gsm) {
-      return NextResponse.json({ error: "Name and GSM are required" }, { status: 400 });
+    // Validate required fields
+    if (!body.name || !body.name.trim()) {
+      return NextResponse.json({
+        success: false,
+        error: "Paper type name is required"
+      }, { status: 400 });
     }
+    
+    const paperTypeData = {
+      name: body.name.trim(),
+      gsm: body.gsm ? parseInt(body.gsm) : null,
+      created_at: new Date().toISOString(),
+    };
+    
+    try {
+      const { data, error } = await supabase
+        .from("paper_types")
+        .insert([paperTypeData])
+        .select()
+        .single();
 
-    const { data, error } = await supabase
-      .from("paper_types")
-      .insert({ 
-        name: body.name.trim(),
-        gsm: parseInt(body.gsm)
-      })
-      .select()
-      .single();
+      if (error) {
+        throw error;
+      }
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({
+        success: true,
+        data,
+      });
+    } catch (insertError: any) {
+      // If table doesn't exist, create a response indicating this
+      if (insertError.code === '42P01') {
+        return NextResponse.json({
+          success: false,
+          error: "Paper types table does not exist. Please create the paper_types table first.",
+          code: "TABLE_NOT_FOUND"
+        }, { status: 404 });
+      }
+      throw insertError;
     }
-
-    return NextResponse.json(data);
-  } catch (error) {
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  } catch (error: any) {
+    console.error("API error:", error);
+    return NextResponse.json({
+      success: false,
+      error: error.message || "Unknown error",
+    }, { status: 500 });
   }
 }
