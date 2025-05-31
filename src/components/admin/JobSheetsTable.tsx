@@ -1,3 +1,4 @@
+// src/components/job-sheets/JobSheetsTable.tsx
 "use client";
 
 import { useState } from "react";
@@ -45,7 +46,7 @@ import {
   Trash2,
   Download,
   Calendar,
-  Banknote, // Replace DollarSign
+  Banknote,
   Layers,
   Filter,
   Search,
@@ -53,7 +54,7 @@ import {
   Eye,
   MessageSquare,
   User,
-  FileSpreadsheet, // For export icon
+  FileSpreadsheet,
 } from "lucide-react";
 import { JobSheet, JobSheetNote } from "@/types/jobsheet";
 
@@ -63,11 +64,20 @@ interface JobSheetsTableProps {
   searchTerm: string;
   dateFilter: string;
   setDateFilter: (filter: string) => void;
-  updateJobSheet: (id: number, updates: Partial<JobSheet>) => Promise<{ success: boolean; error?: string }>;
+  updateJobSheet: (
+    id: number,
+    updates: Partial<JobSheet>
+  ) => Promise<{ success: boolean; error?: string }>;
   deleteJobSheet: (id: number) => Promise<{ success: boolean; error?: string }>;
-  addNote: (jobSheetId: number, note: string) => Promise<{ success: boolean; error?: string }>;
-  generateReport: (jobSheetId: number) => Promise<{ success: boolean; error?: string }>;
+  addNote: (
+    jobSheetId: number,
+    note: string
+  ) => Promise<{ success: boolean; error?: string }>;
+  generateReport: (
+    jobSheetId: number
+  ) => Promise<{ success: boolean; error?: string }>;
   setSelectedJobSheet: (jobSheet: JobSheet | null) => void;
+  onRefresh?: () => Promise<void> | void;
 }
 
 export default function JobSheetsTable({
@@ -81,6 +91,7 @@ export default function JobSheetsTable({
   addNote,
   generateReport,
   setSelectedJobSheet,
+  onRefresh,
 }: JobSheetsTableProps) {
   const [isLoading, setIsLoading] = useState<{ [key: number]: boolean }>({});
   const [quickEditId, setQuickEditId] = useState<number | null>(null);
@@ -278,8 +289,6 @@ export default function JobSheetsTable({
 
   return (
     <div className="mt-8">
-      {" "}
-      {/* Added top margin */}
       <Card>
         <CardHeader>
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -353,10 +362,11 @@ export default function JobSheetsTable({
                   <TableHead className="font-semibold">Party Name</TableHead>
                   <TableHead className="font-semibold">Description</TableHead>
                   <TableHead className="font-semibold">Size</TableHead>
-                  <TableHead className="font-semibold">Sheets</TableHead>
+                  <TableHead className="font-semibold">GSM</TableHead>
+                  <TableHead className="font-semibold">Job Type</TableHead>
                   <TableHead className="font-semibold">Impressions</TableHead>
                   <TableHead className="font-semibold">Total Cost</TableHead>
-                  <TableHead className="font-semibold">Notes</TableHead>
+                  <TableHead className="font-semibold">Balance</TableHead>
                   <TableHead className="font-semibold text-right">
                     Actions
                   </TableHead>
@@ -365,7 +375,7 @@ export default function JobSheetsTable({
               <TableBody>
                 {filteredJobSheets.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-12">
+                    <TableCell colSpan={11} className="text-center py-12">
                       <div className="flex flex-col items-center gap-3 text-gray-500">
                         <FileText className="w-12 h-12" />
                         <div>
@@ -499,12 +509,29 @@ export default function JobSheetsTable({
                         <TableCell>
                           <div className="text-sm">
                             <div className="font-medium">
-                              {sheet.sheet || 0}
+                              {sheet.gsm || "N/A"} GSM
                             </div>
-                            <div className="text-gray-500">
+                            <div className="text-gray-500 text-xs">
                               {sheet.paper_sheet || 0} paper sheets
                             </div>
                           </div>
+                        </TableCell>
+
+                        <TableCell>
+                          <Badge
+                            variant={
+                              sheet.job_type === "front-back"
+                                ? "secondary"
+                                : "default"
+                            }
+                            className="text-xs"
+                          >
+                            {sheet.job_type === "front-back"
+                              ? "Front-Back"
+                              : sheet.job_type === "single-single"
+                                ? "Single-Single"
+                                : "N/A"}
+                          </Badge>
                         </TableCell>
 
                         <TableCell>
@@ -534,45 +561,14 @@ export default function JobSheetsTable({
 
                         <TableCell>
                           <div className="flex items-center gap-2">
-                            <MessageSquare className="w-4 h-4 text-gray-400" />
-                            <span className="text-sm">{sheetNotes.length}</span>
-                            {newNoteId === sheet.id ? (
-                              <div className="flex items-center gap-2 ml-2">
-                                <Input
-                                  value={newNoteText}
-                                  onChange={(e) =>
-                                    setNewNoteText(e.target.value)
-                                  }
-                                  placeholder="Add note..."
-                                  className="w-32 h-8"
-                                  onKeyDown={(e) => {
-                                    if (e.key === "Enter") {
-                                      handleAddNote(sheet.id);
-                                    } else if (e.key === "Escape") {
-                                      setNewNoteId(null);
-                                      setNewNoteText("");
-                                    }
-                                  }}
-                                  autoFocus
-                                />
-                                <Button
-                                  size="sm"
-                                  onClick={() => handleAddNote(sheet.id)}
-                                  disabled={loading || !newNoteText.trim()}
-                                >
-                                  Add
-                                </Button>
+                            <div>
+                              <div className="font-semibold text-sm">
+                                ₹{(sheet.party_balance_after ?? 0).toFixed(2)}
                               </div>
-                            ) : (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setNewNoteId(sheet.id)}
-                                className="h-6 px-2"
-                              >
-                                <Plus className="w-3 h-3" />
-                              </Button>
-                            )}
+                              <div className="text-xs text-gray-500">
+                                {sheet.party_name}
+                              </div>
+                            </div>
                           </div>
                         </TableCell>
 

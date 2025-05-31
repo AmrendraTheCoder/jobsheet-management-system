@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,24 +18,31 @@ import {
   Calendar,
   FileText,
   Settings,
-  DollarSign,
   Send,
   Building2,
   CheckCircle,
   AlertCircle,
-  Bug,
-  Database,
-  Wifi,
   User,
   Layers,
   Banknote,
+  Plus,
+  Calculator,
+  Printer,
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface JobSheetData {
   job_date: string;
   party_name: string;
+  party_id?: number;
   description: string;
-  sheet: string;
   plate: string;
   size: string;
   sq_inch: string;
@@ -45,13 +52,33 @@ interface JobSheetData {
   printing: string;
   uv: string;
   baking: string;
+  gsm: string;
+  paper_type_id?: number;
+  job_type: string;
+  paper_provided_by_party?: boolean;
+  paper_type?: string | null;
+  paper_size?: string | null;
+  paper_gsm?: number | null;
+}
+
+interface Party {
+  id: number;
+  name: string;
+  balance: number;
+  phone?: string;
+  email?: string;
+}
+
+interface PaperType {
+  id: number;
+  name: string;
+  gsm: number;
 }
 
 const initialFormData: JobSheetData = {
   job_date: new Date().toISOString().split("T")[0],
   party_name: "",
   description: "",
-  sheet: "",
   plate: "",
   size: "",
   sq_inch: "",
@@ -61,9 +88,30 @@ const initialFormData: JobSheetData = {
   printing: "",
   uv: "",
   baking: "",
+  gsm: "",
+  job_type: "single-single",
 };
 
-export default function JobSheetForm() {
+const paperSizes = [
+  "14*22",
+  "15*25",
+  "18*23",
+  "18*25",
+  "19*25",
+  "20*30",
+  "20*29",
+  "18*28",
+  "19*26",
+  "22*28",
+  "25*35",
+];
+
+const paperGSMs = [
+  70, 80, 90, 100, 110, 115, 120, 125, 130, 150, 170, 200, 210, 220, 230, 250,
+  260, 270, 280, 300, 330,
+];
+
+export default function EnhancedJobSheetForm() {
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState<JobSheetData>(initialFormData);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -71,25 +119,162 @@ export default function JobSheetForm() {
     type: "success" | "error" | null;
     message: string;
   }>({ type: null, message: "" });
-  const [debugLog, setDebugLog] = useState<string[]>([]);
-  const [showDebug, setShowDebug] = useState(false);
 
-  const addDebugLog = (message: string) => {
-    const timestamp = new Date().toLocaleTimeString();
-    const logMessage = `[${timestamp}] ${message}`;
-    setDebugLog((prev) => [...prev, logMessage]);
-    console.log(logMessage);
+  // New states for enhanced functionality
+  const [parties, setParties] = useState<Party[]>([]);
+  const [paperTypes, setPaperTypes] = useState<PaperType[]>([]);
+  const [selectedParty, setSelectedParty] = useState<Party | null>(null);
+  const [paperProvidedByParty, setPaperProvidedByParty] =
+    useState<boolean>(false);
+  const [paperType, setPaperType] = useState<string>("");
+  const [paperSize, setPaperSize] = useState<string>("");
+  const [paperGSM, setPaperGSM] = useState<string>("");
+
+  // Dialog states
+  const [showNewPartyDialog, setShowNewPartyDialog] = useState(false);
+  const [showNewPaperTypeDialog, setShowNewPaperTypeDialog] = useState(false);
+  const [newPartyName, setNewPartyName] = useState("");
+  const [newPartyBalance, setNewPartyBalance] = useState("");
+  const [newPaperType, setNewPaperType] = useState({ name: "", gsm: "" });
+
+  // Load initial data
+  useEffect(() => {
+    fetchParties();
+    fetchPaperTypes();
+  }, []);
+
+  const fetchParties = async () => {
+    try {
+      const response = await fetch("/api/parties");
+      if (response.ok) {
+        const data = await response.json();
+        setParties(Array.isArray(data) ? data : []);
+      }
+    } catch (error) {
+      console.error("Error fetching parties:", error);
+    }
+  };
+
+  const fetchPaperTypes = async () => {
+    try {
+      const response = await fetch("/api/paper-types");
+      if (response.ok) {
+        const data = await response.json();
+        setPaperTypes(Array.isArray(data) ? data : []);
+      }
+    } catch (error) {
+      console.error("Error fetching paper types:", error);
+    }
   };
 
   const updateFormData = (field: keyof JobSheetData, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
-    addDebugLog(`Updated ${field}: ${value}`);
+  };
+
+  const handlePartyChange = (value: string) => {
+    if (value === "new") {
+      setShowNewPartyDialog(true);
+    } else {
+      const party = parties.find((p) => p.id.toString() === value);
+      if (party) {
+        setSelectedParty(party);
+        setFormData((prev) => ({
+          ...prev,
+          party_id: party.id,
+          party_name: party.name,
+        }));
+      }
+    }
+  };
+
+  const handlePaperTypeChange = (value: string) => {
+    if (value === "new") {
+      setShowNewPaperTypeDialog(true);
+    } else {
+      const paperTypeObj = paperTypes.find((p) => p.id.toString() === value);
+      if (paperTypeObj) {
+        setFormData((prev) => ({
+          ...prev,
+          paper_type_id: paperTypeObj.id,
+          gsm: paperTypeObj.gsm.toString(),
+        }));
+      }
+    }
+  };
+
+  const createNewParty = async () => {
+    if (!newPartyName.trim()) return;
+
+    try {
+      const response = await fetch("/api/parties", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newPartyName.trim(),
+          balance: parseFloat(newPartyBalance) || 0,
+        }),
+      });
+
+      if (response.ok) {
+        const newParty = await response.json();
+        setParties([...parties, newParty]);
+        setSelectedParty(newParty);
+        setFormData((prev) => ({
+          ...prev,
+          party_id: newParty.id,
+          party_name: newParty.name,
+        }));
+        setShowNewPartyDialog(false);
+        setNewPartyName("");
+        setNewPartyBalance("");
+      }
+    } catch (error) {
+      console.error("Error creating party:", error);
+    }
+  };
+
+  const createNewPaperType = async () => {
+    if (!newPaperType.name.trim() || !newPaperType.gsm) return;
+
+    try {
+      const response = await fetch("/api/paper-types", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newPaperType.name.trim(),
+        }),
+      });
+
+      if (response.ok) {
+        const paperTypeObj = await response.json();
+        setPaperTypes([...paperTypes, paperTypeObj]);
+        setFormData((prev) => ({
+          ...prev,
+          paper_type_id: paperTypeObj.id,
+          gsm: paperTypeObj.gsm.toString(),
+        }));
+        setShowNewPaperTypeDialog(false);
+        setNewPaperType({ name: "", gsm: "" });
+      }
+    } catch (error) {
+      console.error("Error creating paper type:", error);
+    }
+  };
+
+  const calculatePrintingCost = () => {
+    const rate = parseFloat(formData.rate) || 0;
+    const imp = parseFloat(formData.imp) || 0;
+
+    if (formData.job_type === "front-back") {
+      return ((rate * imp) / 2).toFixed(2);
+    }
+    return (rate * imp).toFixed(2);
   };
 
   const handleSizeChange = (value: string) => {
     updateFormData("size", value);
-    if (value.includes("x")) {
-      const dimensions = value.split("x");
+    if (value.includes("*")) {
+      const dimensions = value.split("*");
       if (dimensions.length === 2) {
         const width = parseFloat(dimensions[0]);
         const height = parseFloat(dimensions[1]);
@@ -104,113 +289,59 @@ export default function JobSheetForm() {
   const nextStep = () => {
     if (currentStep < 4) {
       setCurrentStep(currentStep + 1);
-      addDebugLog(`Moved to step ${currentStep + 1}`);
     }
   };
 
   const prevStep = () => {
     if (currentStep > 1) {
       setCurrentStep(currentStep - 1);
-      addDebugLog(`Moved to step ${currentStep - 1}`);
-    }
-  };
-
-  const testDatabaseConnection = async () => {
-    addDebugLog("Testing database connection...");
-    try {
-      const response = await fetch("/api/test-db", {
-        method: "GET",
-      });
-      const result = await response.json();
-      addDebugLog(`Database test result: ${JSON.stringify(result)}`);
-    } catch (error) {
-      addDebugLog(`Database connection error: ${error}`);
-    }
-  };
-
-  const testMinimalSubmission = async () => {
-    addDebugLog("Testing minimal submission...");
-    setIsSubmitting(true);
-
-    const minimalData = {
-      job_date: new Date().toISOString().split("T")[0],
-      party_name: "Test Party",
-      description: "Test Job Sheet",
-      sheet: "100",
-      plate: "2",
-      size: "A4",
-      sq_inch: "93.50",
-      paper_sheet: "50",
-      imp: "2000",
-      rate: "10.00",
-      printing: "500.00",
-      uv: "0.00",
-      baking: "0.00",
-    };
-
-    try {
-      const result = await submitJobSheetAction(minimalData);
-      if (result?.success) {
-        setSubmitStatus({
-          type: "success",
-          message: "Test submission successful!",
-        });
-      } else {
-        setSubmitStatus({
-          type: "error",
-          message: result?.error || "Test submission failed",
-        });
-      }
-    } catch (error: any) {
-      setSubmitStatus({
-        type: "error",
-        message: `Error: ${error.message || error}`,
-      });
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
   const handleSubmit = async () => {
-    addDebugLog("=== STARTING JOB SHEET SUBMISSION ===");
     setIsSubmitting(true);
     setSubmitStatus({ type: null, message: "" });
 
-    const requiredFields = [
-      "job_date",
-      "party_name",
-      "description",
-      "sheet",
-      "plate",
-      "size",
-      "sq_inch",
-      "paper_sheet",
-      "imp",
-      "rate",
-      "printing",
-    ];
-    const missingFields = requiredFields.filter(
-      (field) => !formData[field as keyof JobSheetData]
-    );
+    const printingCost = calculatePrintingCost();
+    const totalAmount =
+      parseFloat(printingCost) +
+      parseFloat(formData.uv || "0") +
+      parseFloat(formData.baking || "0");
 
-    if (missingFields.length > 0) {
-      const errorMsg = `Missing required fields: ${missingFields.join(", ")}`;
-      addDebugLog(`Validation failed: ${errorMsg}`);
-      setSubmitStatus({ type: "error", message: errorMsg });
-      setIsSubmitting(false);
-      return;
-    }
+    const submissionData = {
+      ...formData,
+      printing: printingCost,
+      party_id: selectedParty?.id || null,
+      paper_type_id: formData.paper_type_id || null,
+      job_type: formData.job_type,
+      gsm: formData.gsm ? parseInt(formData.gsm) : null,
+      paper_provided_by_party: paperProvidedByParty,
+      paper_type: paperProvidedByParty ? paperType : null,
+      paper_size: paperProvidedByParty ? paperSize : null,
+      paper_gsm: paperProvidedByParty ? parseInt(paperGSM) : null,
+    };
 
     try {
-      const result = await submitJobSheetAction(formData);
+      const result = await submitJobSheetAction(submissionData);
 
       if (result?.success) {
         setSubmitStatus({
           type: "success",
-          message: "Job sheet submitted successfully!",
+          message:
+            "Job sheet created successfully! Party balance has been updated.",
         });
+
+        // Reset form
         setFormData(initialFormData);
+        setPaperProvidedByParty(false);
+        setPaperType("");
+        setPaperSize("");
+        setPaperGSM("");
         setCurrentStep(1);
+        setSelectedParty(null);
+
+        // Refresh parties to get updated balances
+        await fetchParties();
       } else {
         setSubmitStatus({
           type: "error",
@@ -221,7 +352,7 @@ export default function JobSheetForm() {
     } catch (error: any) {
       setSubmitStatus({
         type: "error",
-        message: `Network/System error: ${error.message || "Unknown error"}`,
+        message: `System error: ${error.message || "Unknown error"}`,
       });
     } finally {
       setIsSubmitting(false);
@@ -234,15 +365,16 @@ export default function JobSheetForm() {
         return formData.job_date && formData.party_name && formData.description;
       case 2:
         return (
-          formData.sheet &&
           formData.plate &&
           formData.size &&
           formData.sq_inch &&
           formData.paper_sheet &&
-          formData.imp
+          formData.imp &&
+          formData.gsm &&
+          formData.job_type
         );
       case 3:
-        return formData.rate && formData.printing;
+        return formData.rate;
       case 4:
         return true;
       default:
@@ -251,10 +383,6 @@ export default function JobSheetForm() {
   };
 
   const isStepValid = validateStep(currentStep);
-  const clearDebugLog = () => {
-    setDebugLog([]);
-    addDebugLog("Debug log cleared");
-  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -272,69 +400,6 @@ export default function JobSheetForm() {
           </h2>
           <p className="text-gray-600">Create and manage printing job sheets</p>
         </div>
-
-        {/* Debug Controls */}
-        <Card className="mb-6 bg-yellow-50 border-yellow-200">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-yellow-800">
-              <Bug className="w-5 h-5" />
-              Debug Controls & Testing
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap gap-3 mb-4">
-              <Button
-                onClick={testDatabaseConnection}
-                variant="outline"
-                size="sm"
-                className="border-yellow-300"
-              >
-                <Database className="w-4 h-4 mr-2" />
-                Test DB Connection
-              </Button>
-              <Button
-                onClick={testMinimalSubmission}
-                variant="outline"
-                size="sm"
-                className="border-yellow-300"
-                disabled={isSubmitting}
-              >
-                <Wifi className="w-4 h-4 mr-2" />
-                Test Minimal Submit
-              </Button>
-              <Button
-                onClick={() => setShowDebug(!showDebug)}
-                variant="outline"
-                size="sm"
-                className="border-yellow-300"
-              >
-                {showDebug ? "Hide" : "Show"} Debug Log
-              </Button>
-              <Button
-                onClick={clearDebugLog}
-                variant="outline"
-                size="sm"
-                className="border-yellow-300"
-              >
-                Clear Log
-              </Button>
-            </div>
-
-            {showDebug && (
-              <div className="bg-gray-900 text-green-400 p-4 rounded-lg font-mono text-xs max-h-64 overflow-y-auto">
-                {debugLog.length === 0 ? (
-                  <div>No debug messages yet...</div>
-                ) : (
-                  debugLog.map((log, index) => (
-                    <div key={index} className="mb-1">
-                      {log}
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
 
         {/* Status Message */}
         {submitStatus.type && (
@@ -362,7 +427,7 @@ export default function JobSheetForm() {
             {[
               { step: 1, label: "Job Details", icon: Calendar },
               { step: 2, label: "Production", icon: Settings },
-              { step: 3, label: "Costing", icon: DollarSign },
+              { step: 3, label: "Costing", icon: Calculator },
               { step: 4, label: "Review", icon: Send },
             ].map(({ step, label, icon: Icon }, index) => (
               <div key={step} className="flex items-center">
@@ -394,7 +459,7 @@ export default function JobSheetForm() {
           </div>
         </div>
 
-        {/* Form */}
+        {/* Form Card */}
         <Card className="bg-white shadow-sm border">
           <CardHeader className="border-b bg-gray-50">
             <CardTitle className="flex items-center gap-3 text-lg text-gray-900">
@@ -410,7 +475,7 @@ export default function JobSheetForm() {
               )}
               {currentStep === 3 && (
                 <>
-                  <Banknote className="w-5 h-5" /> Cost Breakdown
+                  <Calculator className="w-5 h-5" /> Cost Breakdown
                 </>
               )}
               {currentStep === 4 && (
@@ -449,18 +514,46 @@ export default function JobSheetForm() {
                     >
                       Party Name *
                     </Label>
-                    <div className="relative mt-1">
-                      <User className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                      <Input
-                        id="party_name"
-                        value={formData.party_name}
-                        onChange={(e) =>
-                          updateFormData("party_name", e.target.value)
-                        }
-                        className="border-gray-300 focus:border-gray-500 pl-10"
-                        placeholder="Enter party/client name"
-                      />
+                    <div className="flex gap-2 mt-1">
+                      <Select
+                        value={formData.party_id?.toString() || ""}
+                        onValueChange={handlePartyChange}
+                      >
+                        <SelectTrigger className="border-gray-300 focus:border-gray-500">
+                          <SelectValue placeholder="Select a party" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {parties.map((party) => (
+                            <SelectItem
+                              key={party.id}
+                              value={party.id.toString()}
+                            >
+                              {party.name} (Balance: ₹{party.balance.toFixed(2)}
+                              )
+                            </SelectItem>
+                          ))}
+                          <SelectItem value="new">
+                            <div className="flex items-center gap-2 text-blue-600">
+                              <Plus className="w-4 h-4" />
+                              Add New Party
+                            </div>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
+                    {selectedParty && (
+                      <div className="mt-2 p-3 bg-blue-50 rounded-lg">
+                        <p className="text-sm text-blue-700">
+                          <strong>Current Balance:</strong> ₹
+                          {selectedParty.balance.toFixed(2)}
+                        </p>
+                        {selectedParty.phone && (
+                          <p className="text-sm text-blue-600">
+                            Phone: {selectedParty.phone}
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -482,17 +575,6 @@ export default function JobSheetForm() {
                     rows={4}
                   />
                 </div>
-
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <div className="flex items-center gap-2 text-blue-800 mb-2">
-                    <FileText className="w-5 h-5" />
-                    <h3 className="font-semibold">Job Information</h3>
-                  </div>
-                  <p className="text-sm text-blue-700">
-                    Please provide the job date, party name, and detailed
-                    description of the printing requirements.
-                  </p>
-                </div>
               </div>
             )}
 
@@ -502,20 +584,27 @@ export default function JobSheetForm() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
                     <Label
-                      htmlFor="sheet"
+                      htmlFor="job_type"
                       className="text-gray-700 font-medium"
                     >
-                      Sheets *
+                      Job Type *
                     </Label>
-                    <Input
-                      id="sheet"
-                      type="number"
-                      min="1"
-                      value={formData.sheet}
-                      onChange={(e) => updateFormData("sheet", e.target.value)}
-                      className="border-gray-300 focus:border-gray-500 mt-1"
-                      placeholder="100"
-                    />
+                    <Select
+                      value={formData.job_type}
+                      onValueChange={(value) =>
+                        updateFormData("job_type", value)
+                      }
+                    >
+                      <SelectTrigger className="border-gray-300 focus:border-gray-500 mt-1">
+                        <SelectValue placeholder="Select job type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="single-single">
+                          Single-Single
+                        </SelectItem>
+                        <SelectItem value="front-back">Front-Back</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div>
                     <Label
@@ -538,14 +627,21 @@ export default function JobSheetForm() {
                     <Label htmlFor="size" className="text-gray-700 font-medium">
                       Size *
                     </Label>
-                    <Input
-                      id="size"
+                    <Select
                       value={formData.size}
-                      onChange={(e) => handleSizeChange(e.target.value)}
-                      className="border-gray-300 focus:border-gray-500 mt-1"
-                      placeholder="A4, 8.5x11, 12x18"
-                      maxLength={20}
-                    />
+                      onValueChange={handleSizeChange}
+                    >
+                      <SelectTrigger className="border-gray-300 focus:border-gray-500 mt-1">
+                        <SelectValue placeholder="Select paper size" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {paperSizes.map((size) => (
+                          <SelectItem key={size} value={size}>
+                            {size}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
 
@@ -567,7 +663,7 @@ export default function JobSheetForm() {
                         updateFormData("sq_inch", e.target.value)
                       }
                       className="border-gray-300 focus:border-gray-500 mt-1"
-                      placeholder="93.50"
+                      placeholder="Auto-calculated from size"
                     />
                   </div>
                   <div>
@@ -605,24 +701,148 @@ export default function JobSheetForm() {
                   </div>
                 </div>
 
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                  <h4 className="font-medium text-gray-900 mb-2">
-                    Production Notes
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label
+                      htmlFor="paper_type"
+                      className="text-gray-700 font-medium"
+                    >
+                      Paper Type *
+                    </Label>
+                    <Select
+                      value={formData.paper_type_id?.toString() || ""}
+                      onValueChange={handlePaperTypeChange}
+                    >
+                      <SelectTrigger className="border-gray-300 focus:border-gray-500 mt-1">
+                        <SelectValue placeholder="Select paper type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {paperTypes.map((type) => (
+                          <SelectItem key={type.id} value={type.id.toString()}>
+                            {type.name}
+                          </SelectItem>
+                        ))}
+                        <SelectItem value="new">
+                          <div className="flex items-center gap-2 text-blue-600">
+                            <Plus className="w-4 h-4" />
+                            Add New Paper Type
+                          </div>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="gsm" className="text-gray-700 font-medium">
+                      GSM *
+                    </Label>
+                    <Select
+                      value={formData.gsm}
+                      onValueChange={(value) => updateFormData("gsm", value)}
+                    >
+                      <SelectTrigger className="border-gray-300 focus:border-gray-500 mt-1">
+                        <SelectValue placeholder="Select GSM" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {paperGSMs.map((gsm) => (
+                          <SelectItem key={gsm} value={gsm.toString()}>
+                            {gsm} GSM
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Paper provided by party section */}
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                  <h4 className="font-semibold text-yellow-900 mb-4">
+                    Paper Details
                   </h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-600">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <strong>Sheets:</strong> Total number of paper sheets used
+                      <Label htmlFor="paper-provided">
+                        Paper Provided by Party
+                      </Label>
+                      <Select
+                        value={paperProvidedByParty ? "yes" : "no"}
+                        onValueChange={(value) =>
+                          setPaperProvidedByParty(value === "yes")
+                        }
+                      >
+                        <SelectTrigger className="border-gray-300 focus:border-gray-500 mt-1">
+                          <SelectValue placeholder="Select option" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="no">No</SelectItem>
+                          <SelectItem value="yes">Yes</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
-                    <div>
-                      <strong>Plates:</strong> Number of printing plates
-                      required
-                    </div>
-                    <div>
-                      <strong>Square Inches:</strong> Print area calculation
-                    </div>
-                    <div>
-                      <strong>Impressions:</strong> Total print impressions made
-                    </div>
+
+                    {paperProvidedByParty && (
+                      <>
+                        <div>
+                          <Label htmlFor="paper-type">Paper Type</Label>
+                          <Select
+                            value={paperType}
+                            onValueChange={setPaperType}
+                          >
+                            <SelectTrigger className="border-gray-300 focus:border-gray-500 mt-1">
+                              <SelectValue placeholder="Select paper type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {[
+                                "FRC",
+                                "DUOLEX",
+                                "SBS",
+                                "ART PAPER",
+                                "MAIFLITO",
+                                "GUMMING",
+                              ].map((type) => (
+                                <SelectItem key={type} value={type}>
+                                  {type}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div>
+                          <Label htmlFor="paper-size">Paper Size</Label>
+                          <Select
+                            value={paperSize}
+                            onValueChange={setPaperSize}
+                          >
+                            <SelectTrigger className="border-gray-300 focus:border-gray-500 mt-1">
+                              <SelectValue placeholder="Select paper size" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {paperSizes.map((size) => (
+                                <SelectItem key={size} value={size}>
+                                  {size}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div>
+                          <Label htmlFor="paper-gsm">Paper GSM</Label>
+                          <Select value={paperGSM} onValueChange={setPaperGSM}>
+                            <SelectTrigger className="border-gray-300 focus:border-gray-500 mt-1">
+                              <SelectValue placeholder="Select GSM" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {paperGSMs.map((gsm) => (
+                                <SelectItem key={gsm} value={gsm.toString()}>
+                                  {gsm} GSM
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -652,26 +872,26 @@ export default function JobSheetForm() {
                   </div>
                   <div>
                     <Label
-                      htmlFor="printing"
+                      htmlFor="printing_calculated"
                       className="text-gray-700 font-medium"
                     >
-                      Printing Cost *
+                      Printing Cost (Calculated)
                     </Label>
                     <div className="relative mt-1">
                       <Banknote className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                       <Input
-                        id="printing"
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={formData.printing}
-                        onChange={(e) =>
-                          updateFormData("printing", e.target.value)
-                        }
-                        className="border-gray-300 focus:border-gray-500 pl-10"
-                        placeholder="500.00"
+                        id="printing_calculated"
+                        type="text"
+                        value={`₹${calculatePrintingCost()}`}
+                        className="border-gray-300 focus:border-gray-500 pl-10 bg-gray-50"
+                        readOnly
                       />
                     </div>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {formData.job_type === "front-back"
+                        ? "Rate × Impressions ÷ 2"
+                        : "Rate × Impressions"}
+                    </p>
                   </div>
                 </div>
 
@@ -728,7 +948,7 @@ export default function JobSheetForm() {
                     <div className="flex justify-between">
                       <span className="text-blue-700">Printing Cost:</span>
                       <span className="font-medium text-blue-900">
-                        ₹{formData.printing || "0.00"}
+                        ₹{calculatePrintingCost()}
                       </span>
                     </div>
                     <div className="flex justify-between">
@@ -749,7 +969,7 @@ export default function JobSheetForm() {
                         <span className="text-blue-900">
                           ₹
                           {(
-                            parseFloat(formData.printing || "0") +
+                            parseFloat(calculatePrintingCost()) +
                             parseFloat(formData.uv || "0") +
                             parseFloat(formData.baking || "0")
                           ).toFixed(2)}
@@ -757,6 +977,38 @@ export default function JobSheetForm() {
                       </div>
                     </div>
                   </div>
+                  {selectedParty && (
+                    <div className="mt-3 pt-3 border-t border-blue-300">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-blue-700">Current Balance:</span>
+                        <span className="font-medium text-blue-900">
+                          ₹{selectedParty.balance.toFixed(2)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-sm mt-1">
+                        <span className="text-blue-700">After This Job:</span>
+                        <span
+                          className={`font-medium ${
+                            selectedParty.balance -
+                              (parseFloat(calculatePrintingCost()) +
+                                parseFloat(formData.uv || "0") +
+                                parseFloat(formData.baking || "0")) <
+                            0
+                              ? "text-red-600"
+                              : "text-blue-900"
+                          }`}
+                        >
+                          ₹
+                          {(
+                            selectedParty.balance -
+                            (parseFloat(calculatePrintingCost()) +
+                              parseFloat(formData.uv || "0") +
+                              parseFloat(formData.baking || "0"))
+                          ).toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -792,6 +1044,16 @@ export default function JobSheetForm() {
                             {formData.party_name || "Not specified"}
                           </span>
                         </div>
+                        <div className="flex justify-between">
+                          <span className="font-medium text-gray-700">
+                            Job Type:
+                          </span>
+                          <span className="text-gray-900">
+                            {formData.job_type === "front-back"
+                              ? "Front-Back"
+                              : "Single-Single"}
+                          </span>
+                        </div>
                       </div>
                       {formData.description && (
                         <div className="mt-4">
@@ -811,14 +1073,6 @@ export default function JobSheetForm() {
                         Production Details
                       </h4>
                       <div className="space-y-2 text-sm">
-                        <div className="flex justify-between">
-                          <span className="font-medium text-gray-700">
-                            Sheets:
-                          </span>
-                          <span className="text-gray-900">
-                            {formData.sheet || "0"}
-                          </span>
-                        </div>
                         <div className="flex justify-between">
                           <span className="font-medium text-gray-700">
                             Plates:
@@ -859,6 +1113,14 @@ export default function JobSheetForm() {
                             {formData.imp || "0"}
                           </span>
                         </div>
+                        <div className="flex justify-between">
+                          <span className="font-medium text-gray-700">
+                            GSM:
+                          </span>
+                          <span className="text-gray-900">
+                            {formData.gsm || "0"}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -882,7 +1144,7 @@ export default function JobSheetForm() {
                           Printing:
                         </span>
                         <span className="text-gray-900">
-                          ₹{formData.printing || "0.00"}
+                          ₹{calculatePrintingCost()}
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
@@ -908,7 +1170,7 @@ export default function JobSheetForm() {
                         <span className="text-blue-900">
                           ₹
                           {(
-                            parseFloat(formData.printing || "0") +
+                            parseFloat(calculatePrintingCost()) +
                             parseFloat(formData.uv || "0") +
                             parseFloat(formData.baking || "0")
                           ).toFixed(2)}
@@ -924,7 +1186,8 @@ export default function JobSheetForm() {
                   </h4>
                   <div className="text-sm text-blue-800 space-y-1">
                     <p>
-                      • We'll review your job sheet and process the requirements
+                      • The job sheet will be saved and party balance will be
+                      updated
                     </p>
                     <p>• Production will begin once everything is approved</p>
                     <p>• You'll be contacted for confirmation and delivery</p>
@@ -951,7 +1214,7 @@ export default function JobSheetForm() {
                     )}
                   </Button>
                   <p className="text-xs text-gray-500 mt-2">
-                    This will save the job sheet to the production database
+                    This will save the job sheet and update party balance
                   </p>
                 </div>
               </div>
@@ -1048,6 +1311,100 @@ export default function JobSheetForm() {
           </p>
         </div>
       </div>
+
+      {/* New Party Dialog */}
+      <Dialog open={showNewPartyDialog} onOpenChange={setShowNewPartyDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add New Party</DialogTitle>
+            <DialogDescription>
+              Create a new party for your job sheets.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="new-party-name">Party Name</Label>
+              <Input
+                id="new-party-name"
+                value={newPartyName}
+                onChange={(e) => setNewPartyName(e.target.value)}
+                placeholder="Enter party name"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowNewPartyDialog(false);
+                setNewPartyName("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button onClick={createNewParty} disabled={!newPartyName.trim()}>
+              Create Party
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* New Paper Type Dialog */}
+      <Dialog
+        open={showNewPaperTypeDialog}
+        onOpenChange={setShowNewPaperTypeDialog}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add New Paper Type</DialogTitle>
+            <DialogDescription>
+              Create a new paper type for your job sheets.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="new-paper-name">Paper Type Name</Label>
+              <Input
+                id="new-paper-name"
+                value={newPaperType.name}
+                onChange={(e) =>
+                  setNewPaperType({ ...newPaperType, name: e.target.value })
+                }
+                placeholder="e.g., Maplitho, Art Paper"
+              />
+            </div>
+            <div>
+              <Label htmlFor="new-paper-gsm">GSM</Label>
+              <Input
+                id="new-paper-gsm"
+                type="number"
+                value={newPaperType.gsm}
+                onChange={(e) =>
+                  setNewPaperType({ ...newPaperType, gsm: e.target.value })
+                }
+                placeholder="e.g., 80, 100, 130"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowNewPaperTypeDialog(false);
+                setNewPaperType({ name: "", gsm: "" });
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={createNewPaperType}
+              disabled={!newPaperType.name.trim() || !newPaperType.gsm}
+            >
+              Create Paper Type
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

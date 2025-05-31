@@ -589,8 +589,9 @@ export const downloadInvoiceAction = async (quotationId: string) => {
 interface JobSheetData {
   job_date: string;
   party_name: string;
+  party_id?: number | null; // Add this
   description: string;
-  sheet: string;
+  sheet?: string;
   plate: string;
   size: string;
   sq_inch: string;
@@ -600,6 +601,13 @@ interface JobSheetData {
   printing: string;
   uv: string;
   baking: string;
+  paper_type_id?: number | null; // Add this
+  job_type?: string | null; // Add this
+  gsm?: number | null; // Add this
+  paper_provided_by_party?: boolean; // Add this
+  paper_type?: string | null; // Add this
+  paper_size?: string | null; // Add this
+  paper_gsm?: number | null; // Add this
 }
 
 
@@ -613,9 +621,10 @@ export const submitJobSheetAction = async (formData: JobSheetData) => {
     // Convert string values to appropriate types for database
     const jobSheetData = {
       job_date: formData.job_date || null,
+      party_id: formData.party_id || null, // Add this
       party_name: formData.party_name || null,
       description: formData.description || null,
-      sheet: formData.sheet ? parseInt(formData.sheet) : null,
+      paper_type_id: formData.paper_type_id || null, // Add this
       plate: formData.plate ? parseInt(formData.plate) : null,
       size: formData.size || null,
       sq_inch: formData.sq_inch ? parseFloat(formData.sq_inch) : null,
@@ -625,6 +634,12 @@ export const submitJobSheetAction = async (formData: JobSheetData) => {
       printing: formData.printing ? parseFloat(formData.printing) : null,
       uv: formData.uv ? parseFloat(formData.uv) : null,
       baking: formData.baking ? parseFloat(formData.baking) : null,
+      job_type: formData.job_type || null, // Add this
+      gsm: formData.gsm || null, // Add this
+      paper_provided_by_party: formData.paper_provided_by_party || false, // Add this
+      paper_type: formData.paper_type || null, // Add this
+      paper_size: formData.paper_size || null, // Add this
+      paper_gsm: formData.paper_gsm || null, // Add this
     };
 
     console.log("Processed data for database:", JSON.stringify(jobSheetData, null, 2));
@@ -634,7 +649,6 @@ export const submitJobSheetAction = async (formData: JobSheetData) => {
       { key: 'job_date', value: jobSheetData.job_date },
       { key: 'party_name', value: jobSheetData.party_name },
       { key: 'description', value: jobSheetData.description },
-      { key: 'sheet', value: jobSheetData.sheet },
       { key: 'plate', value: jobSheetData.plate },
       { key: 'size', value: jobSheetData.size },
       { key: 'sq_inch', value: jobSheetData.sq_inch },
@@ -864,5 +878,368 @@ export const generateJobSheetReportAction = async (jobSheetId: number) => {
   } catch (error: any) {
     console.error("Error in generateJobSheetReportAction:", error);
     return { success: false, error: error.message || "Internal server error" };
+  }
+};
+
+// ========== PARTY MANAGEMENT ACTIONS ==========
+export const addPartyAction = async (formData: {
+  name: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  balance?: number;
+}) => {
+  try {
+    console.log("=== ADD PARTY ACTION START ===");
+    console.log("Form data received:", JSON.stringify(formData, null, 2));
+
+    const supabase = await createClient();
+
+    // Validate required fields
+    if (!formData.name || formData.name.trim() === '') {
+      return {
+        success: false,
+        error: "Party name is required"
+      };
+    }
+
+    // Validate email format if provided
+    if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      return {
+        success: false,
+        error: "Invalid email format"
+      };
+    }
+
+    const partyData = {
+      name: formData.name.trim(),
+      phone: formData.phone?.trim() || null,
+      email: formData.email?.trim() || null,
+      address: formData.address?.trim() || null,
+      balance: parseFloat(formData.balance?.toString() || '0') || 0,
+    };
+
+    console.log("Processed party data:", JSON.stringify(partyData, null, 2));
+
+    // Insert party
+    const { data: party, error } = await supabase
+      .from("parties")
+      .insert([partyData])
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Database error:", error);
+      return {
+        success: false,
+        error: `Database error: ${error.message}`,
+      };
+    }
+
+    // If there's an initial balance, create a transaction record
+    if (party.balance !== 0) {
+      const transactionData = {
+        party_id: party.id,
+        type: party.balance > 0 ? 'payment' : 'order',
+        amount: Math.abs(party.balance),
+        description: party.balance > 0 
+          ? 'Initial balance - advance payment' 
+          : 'Initial balance - opening order',
+        balance_after: party.balance,
+        created_by: 'System'
+      };
+
+      await supabase
+        .from('party_transactions')
+        .insert([transactionData]);
+    }
+
+    console.log("Party created successfully:", party);
+    console.log("=== ADD PARTY ACTION SUCCESS ===");
+
+    return {
+      success: true,
+      data: party,
+      message: "Party added successfully!",
+    };
+
+  } catch (error: any) {
+    console.error("=== ADD PARTY ACTION ERROR ===");
+    console.error("Full error:", error);
+    
+    return {
+      success: false,
+      error: `Server error: ${error.message || "Unknown error occurred"}`,
+    };
+  }
+};
+
+export const updatePartyAction = async (
+  partyId: number,
+  updates: {
+    name?: string;
+    phone?: string;
+    email?: string;
+    address?: string;
+    balance?: number;
+  }
+) => {
+  const supabase = await createClient();
+
+  console.log(`Updating party ${partyId}:`, updates);
+
+  try {
+    // Validate required fields
+    if (updates.name !== undefined && (!updates.name || updates.name.trim() === '')) {
+      return { success: false, error: "Party name cannot be empty" };
+    }
+
+    // Validate email format if provided
+    if (updates.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(updates.email)) {
+      return { success: false, error: "Invalid email format" };
+    }
+
+    const updateData: any = {
+      updated_at: new Date().toISOString(),
+    };
+
+    if (updates.name !== undefined) updateData.name = updates.name.trim();
+    if (updates.phone !== undefined) updateData.phone = updates.phone?.trim() || null;
+    if (updates.email !== undefined) updateData.email = updates.email?.trim() || null;
+    if (updates.address !== undefined) updateData.address = updates.address?.trim() || null;
+
+    // If balance is being updated, handle it separately with a transaction
+    if (updates.balance !== undefined) {
+      // Get current balance
+      const { data: currentParty } = await supabase
+        .from('parties')
+        .select('balance')
+        .eq('id', partyId)
+        .single();
+
+      if (currentParty && parseFloat(updates.balance.toString()) !== currentParty.balance) {
+        const balanceChange = parseFloat(updates.balance.toString()) - currentParty.balance;
+        
+        // Create adjustment transaction
+        const transactionData = {
+          party_id: partyId,
+          type: 'adjustment',
+          amount: Math.abs(balanceChange),
+          description: `Balance adjustment: ${balanceChange > 0 ? '+' : ''}${balanceChange.toFixed(2)}`,
+          balance_after: parseFloat(updates.balance.toString()),
+          created_by: 'Admin'
+        };
+
+        await supabase
+          .from('party_transactions')
+          .insert([transactionData]);
+      }
+    }
+
+    const { data, error } = await supabase
+      .from("parties")
+      .update(updateData)
+      .eq("id", partyId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Error updating party:", error);
+      return { success: false, error: error.message };
+    }
+
+    console.log("Party updated successfully:", data);
+    return { success: true, data };
+  } catch (error: any) {
+    console.error("Exception in updatePartyAction:", error);
+    return { success: false, error: error.message || "Unknown error occurred" };
+  }
+};
+
+export const deletePartyAction = async (partyId: number) => {
+  const supabase = await createClient();
+
+  console.log(`Deleting party ${partyId}`);
+
+  try {
+    // Check if party has associated records
+    const { data: transactions } = await supabase
+      .from('party_transactions')
+      .select('id')
+      .eq('party_id', partyId)
+      .limit(1);
+
+    const { data: orders } = await supabase
+      .from('party_orders')
+      .select('id')
+      .eq('party_id', partyId)
+      .limit(1);
+
+    if ((transactions && transactions.length > 0) || (orders && orders.length > 0)) {
+      return { 
+        success: false, 
+        error: 'Cannot delete party with existing transactions or orders. Please clear all transactions first.' 
+      };
+    }
+
+    const { error } = await supabase
+      .from("parties")
+      .delete()
+      .eq("id", partyId);
+
+    if (error) {
+      console.error("Error deleting party:", error);
+      return { success: false, error: error.message };
+    }
+
+    console.log("Party deleted successfully");
+    return { success: true };
+  } catch (error: any) {
+    console.error("Exception in deletePartyAction:", error);
+    return { success: false, error: error.message || "Unknown error occurred" };
+  }
+};
+
+export const addPartyTransactionAction = async (
+  partyId: number,
+  type: 'payment' | 'order' | 'adjustment',
+  amount: number,
+  description?: string,
+  referenceOrderId?: number
+) => {
+  const supabase = await createClient();
+
+  console.log(`Adding ${type} transaction for party ${partyId}: ₹${amount}`);
+
+  try {
+    // Validate inputs
+    if (!partyId || !type || !amount) {
+      return { success: false, error: "Party ID, type, and amount are required" };
+    }
+
+    if (!['payment', 'order', 'adjustment'].includes(type)) {
+      return { success: false, error: "Invalid transaction type" };
+    }
+
+    if (amount <= 0) {
+      return { success: false, error: "Amount must be positive" };
+    }
+
+    // Get current party balance
+    const { data: party, error: partyError } = await supabase
+      .from('parties')
+      .select('balance, name')
+      .eq('id', partyId)
+      .single();
+
+    if (partyError || !party) {
+      return { success: false, error: "Party not found" };
+    }
+
+    // Calculate new balance based on transaction type
+    let balanceChange = 0;
+    switch (type) {
+      case 'payment':
+        balanceChange = amount; // Payment increases balance
+        break;
+      case 'order':
+        balanceChange = -amount; // Order decreases balance
+        break;
+      case 'adjustment':
+        balanceChange = amount; // Adjustment can be positive or negative
+        break;
+    }
+
+    const newBalance = parseFloat(party.balance) + balanceChange;
+
+    // Create transaction record
+    const transactionData = {
+      party_id: partyId,
+      type,
+      amount: Math.abs(amount),
+      description: description || `${type.charAt(0).toUpperCase() + type.slice(1)} - ₹${Math.abs(amount)}`,
+      balance_after: newBalance,
+      reference_order_id: referenceOrderId || null,
+      created_by: 'Admin'
+    };
+
+    const { data: transaction, error } = await supabase
+      .from('party_transactions')
+      .insert([transactionData])
+      .select(`
+        *,
+        party:parties(name)
+      `)
+      .single();
+
+    if (error) {
+      console.error("Error creating transaction:", error);
+      return { success: false, error: error.message };
+    }
+
+    console.log("Transaction created successfully:", transaction);
+    return { success: true, data: transaction, message: `${type.charAt(0).toUpperCase() + type.slice(1)} recorded successfully!` };
+  } catch (error: any) {
+    console.error("Exception in addPartyTransactionAction:", error);
+    return { success: false, error: error.message || "Unknown error occurred" };
+  }
+};
+
+export const getPartiesAction = async () => {
+  const supabase = await createClient();
+
+  try {
+    const { data: parties, error } = await supabase
+      .from('parties')
+      .select(`
+        *,
+        party_transactions:party_transactions(
+          id, type, amount, description, created_at
+        ),
+        party_orders:party_orders(
+          id, order_amount, description, status, created_at
+        )
+      `)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching parties:', error);
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, data: parties || [] };
+  } catch (error: any) {
+    console.error('Exception in getPartiesAction:', error);
+    return { success: false, error: error.message || "Unknown error occurred" };
+  }
+};
+
+export const getPartyTransactionsAction = async (partyId?: number) => {
+  const supabase = await createClient();
+
+  try {
+    let query = supabase
+      .from('party_transactions')
+      .select(`
+        *,
+        party:parties(name)
+      `)
+      .order('created_at', { ascending: false });
+
+    if (partyId) {
+      query = query.eq('party_id', partyId);
+    }
+
+    const { data: transactions, error } = await query;
+
+    if (error) {
+      console.error('Error fetching transactions:', error);
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, data: transactions || [] };
+  } catch (error: any) {
+    console.error('Exception in getPartyTransactionsAction:', error);
+    return { success: false, error: error.message || "Unknown error occurred" };
   }
 };

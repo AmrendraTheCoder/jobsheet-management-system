@@ -10,6 +10,7 @@ import {
   Home,
   Menu,
   X,
+  Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -91,11 +92,11 @@ export default function JobSheetDashboardNavbar({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => (window.location.href = "/admin")}
+                onClick={() => (window.location.href = "/parties")}
                 className="text-gray-600 hover:text-gray-900"
               >
-                <Home className="w-4 h-4 mr-2" />
-                Quotations
+                <Users className="w-4 h-4 mr-2" />
+                Parties
               </Button>
               <Button
                 variant="ghost"

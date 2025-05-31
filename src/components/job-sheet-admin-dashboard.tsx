@@ -30,6 +30,7 @@ export default function JobSheetAdminDashboard() {
     deleteJobSheet,
     addNote,
     generateReport,
+    refetch, // Add this line
   } = useJobSheets();
 
   // State for notifications
@@ -264,6 +265,7 @@ export default function JobSheetAdminDashboard() {
           addNote={addNote}
           generateReport={generateReport}
           setSelectedJobSheet={setSelectedJobSheet}
+          // refetch={refetch} // Add this line if you need it
         />
 
         {/* Job Sheet Detail Modal */}

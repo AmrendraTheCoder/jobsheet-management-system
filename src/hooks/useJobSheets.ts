@@ -18,8 +18,9 @@ export function useJobSheets() {
       const response = await fetch("/api/job-sheets");
       
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+        const errorText = await response.text();
+        console.error("API response not ok:", response.status, errorText);
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
       
       const data = await response.json();
@@ -28,18 +29,23 @@ export function useJobSheets() {
       if (data.success) {
         setJobSheets(data.data || []);
         setError(null);
+        
+        if (data.warning) {
+          console.warn("API Warning:", data.warning);
+        }
       } else {
         throw new Error(data.error || "Failed to fetch job sheets");
       }
     } catch (err: any) {
       console.error("Error fetching job sheets:", err);
       setError(err.message || "Failed to load job sheets");
+      setJobSheets([]); // Set empty array on error
     } finally {
       setLoading(false);
     }
   };
 
-  // Fetch notes
+  // Fetch notes (with error handling for missing table)
   const fetchNotes = async () => {
     try {
       console.log("Fetching job sheet notes...");
@@ -54,11 +60,18 @@ export function useJobSheets() {
         }
       } else {
         console.warn("Notes API not available or table doesn't exist");
+        setNotes([]); // Set empty array if notes table doesn't exist
       }
     } catch (err) {
       console.warn("Error fetching notes (table might not exist):", err);
-      // Don't set this as an error since notes are optional
+      setNotes([]); // Don't set this as an error since notes are optional
     }
+  };
+
+  // Refetch function that refreshes both job sheets and notes
+  const refetch = async () => {
+    await fetchJobSheets();
+    await fetchNotes();
   };
 
   // Update job sheet
@@ -168,14 +181,8 @@ export function useJobSheets() {
       if (response.ok) {
         const data = await response.json();
         if (data.success) {
-          // For now, just log the report data
-          // Later you can implement PDF download
           console.log("Report generated:", data);
-          
-          // You could open a new window with report data
-          // or trigger a download
           alert(`Report ${data.reportNumber} generated successfully!`);
-          
           return { success: true };
         }
       }
@@ -202,6 +209,6 @@ export function useJobSheets() {
     deleteJobSheet,
     addNote,
     generateReport,
-    refetch: fetchJobSheets,
+    refetch, // Make sure this is included in the return object
   };
 }

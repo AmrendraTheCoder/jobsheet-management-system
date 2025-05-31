@@ -69,15 +69,32 @@ export default function JobSheetFormModal({
     e.preventDefault();
     setLoading(true);
     setError("");
+
+    // Prepare the form data with proper structure
+    const updatedFormData = {
+      ...form,
+      // Add missing fields that might be needed
+      party_id: form.party_id || null,
+      paper_type_id: form.paper_type_id || null,
+      job_type: form.job_type || null,
+      gsm: form.gsm ? parseInt(form.gsm) : null,
+      paper_provided_by_party: form.paper_provided_by_party || false,
+      paper_type: form.paper_type || null,
+      paper_size: form.paper_size || null,
+      paper_gsm: form.paper_gsm ? parseInt(form.paper_gsm) : null,
+    };
+
+    console.log("JobSheetFormModal - Submitting form data:", updatedFormData); // Debug log
+
     let res;
     if (form.file) {
       const formData = new FormData();
-      Object.entries(form).forEach(([key, value]) => {
+      Object.entries(updatedFormData).forEach(([key, value]) => {
         if (value !== null && value !== undefined && value !== "") {
           if (key === "file" && value instanceof File) {
             formData.append("file", value);
-          } else if (key !== "file" && typeof value === "string") {
-            formData.append(key, value);
+          } else if (key !== "file") {
+            formData.append(key, value.toString());
           }
         }
       });
@@ -88,7 +105,9 @@ export default function JobSheetFormModal({
         body: formData,
       });
     } else {
-      const body = editingSheet ? { ...form, id: editingSheet.id } : form;
+      const body = editingSheet
+        ? { ...updatedFormData, id: editingSheet.id }
+        : updatedFormData;
       res = await fetch("/api/job-sheet", {
         method: editingSheet ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
@@ -233,6 +252,7 @@ export default function JobSheetFormModal({
             >
               {editingSheet ? "Update" : "Add"} Job Sheet
             </Button>
+            
             <Button
               type="button"
               variant="outline"
