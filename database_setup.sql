@@ -44,16 +44,88 @@ CREATE TABLE IF NOT EXISTS public.party_orders (
     completed_at TIMESTAMP WITH TIME ZONE
 );
 
+-- Create job_sheets table if it doesn't exist (basic structure)
+CREATE TABLE IF NOT EXISTS public.job_sheets (
+    id SERIAL PRIMARY KEY,
+    job_date DATE,
+    party_name TEXT,
+    party_id INTEGER REFERENCES public.parties(id),
+    description TEXT,
+    plate INTEGER,
+    size TEXT,
+    sq_inch DECIMAL(10,2),
+    paper_sheet INTEGER,
+    imp INTEGER,
+    rate DECIMAL(10,2),
+    printing DECIMAL(10,2),
+    uv DECIMAL(10,2),
+    baking DECIMAL(10,2),
+    job_type TEXT,
+    gsm INTEGER,
+    paper_provided_by_party BOOLEAN DEFAULT false,
+    paper_type TEXT,
+    paper_size TEXT,
+    paper_gsm INTEGER,
+    paper_type_id INTEGER,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
+-- Create quotation_requests table if it doesn't exist (basic structure)
+CREATE TABLE IF NOT EXISTS public.quotation_requests (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_name TEXT NOT NULL,
+    client_email TEXT NOT NULL,
+    client_phone TEXT,
+    company_name TEXT,
+    project_title TEXT NOT NULL,
+    project_description TEXT,
+    print_type TEXT NOT NULL,
+    paper_type TEXT NOT NULL,
+    paper_size TEXT NOT NULL,
+    quantity INTEGER NOT NULL,
+    pages INTEGER DEFAULT 1,
+    color_type TEXT NOT NULL,
+    binding_type TEXT,
+    lamination TEXT,
+    folding TEXT,
+    cutting TEXT DEFAULT 'standard',
+    status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'completed')),
+    priority TEXT DEFAULT 'normal' CHECK (priority IN ('low', 'normal', 'high', 'urgent')),
+    final_price DECIMAL(10,2),
+    invoice_number TEXT,
+    invoice_date TIMESTAMP WITH TIME ZONE,
+    total_amount DECIMAL(10,2),
+    tax_amount DECIMAL(10,2),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()),
+    completed_at TIMESTAMP WITH TIME ZONE
+);
+
 -- Add party_id to job_sheets table if it doesn't exist
 DO $$
 BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM information_schema.columns 
-        WHERE table_name = 'job_sheets' AND column_name = 'party_id'
-    ) THEN
-        ALTER TABLE public.job_sheets ADD COLUMN party_id INTEGER REFERENCES public.parties(id);
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'job_sheets') THEN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_name = 'job_sheets' AND column_name = 'party_id'
+        ) THEN
+            ALTER TABLE public.job_sheets ADD COLUMN party_id INTEGER REFERENCES public.parties(id);
+        END IF;
     END IF;
 END $$;
+
+-- Create users table if it doesn't exist (for authentication)
+CREATE TABLE IF NOT EXISTS public.users (
+    id UUID PRIMARY KEY,
+    name TEXT,
+    full_name TEXT,
+    email TEXT,
+    user_id UUID,
+    token_identifier UUID,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
 
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_parties_name ON public.parties(name);
@@ -61,6 +133,10 @@ CREATE INDEX IF NOT EXISTS idx_party_transactions_party_id ON public.party_trans
 CREATE INDEX IF NOT EXISTS idx_party_transactions_created_at ON public.party_transactions(created_at);
 CREATE INDEX IF NOT EXISTS idx_party_orders_party_id ON public.party_orders(party_id);
 CREATE INDEX IF NOT EXISTS idx_party_orders_status ON public.party_orders(status);
+CREATE INDEX IF NOT EXISTS idx_job_sheets_party_id ON public.job_sheets(party_id);
+CREATE INDEX IF NOT EXISTS idx_job_sheets_created_at ON public.job_sheets(created_at);
+CREATE INDEX IF NOT EXISTS idx_quotation_requests_status ON public.quotation_requests(status);
+CREATE INDEX IF NOT EXISTS idx_quotation_requests_created_at ON public.quotation_requests(created_at);
 
 -- Function to update party balance and statistics
 CREATE OR REPLACE FUNCTION update_party_stats(party_id_param INTEGER)
@@ -131,16 +207,32 @@ INSERT INTO public.parties (name, phone, email, balance) VALUES
 ('Tech Solutions Pvt Ltd', '+91-9876543212', 'hello@techsol.com', 8500.00)
 ON CONFLICT DO NOTHING;
 
+-- Add sample transactions for the parties
+INSERT INTO public.party_transactions (party_id, type, amount, description, balance_after, created_by) VALUES 
+(1, 'payment', 20000.00, 'Initial advance payment', 20000.00, 'System'),
+(1, 'order', 5000.00, 'Website development order', 15000.00, 'System'),
+(2, 'order', 12000.00, 'Mobile app development', -12000.00, 'System'),
+(2, 'payment', 7000.00, 'Partial payment received', -5000.00, 'System'),
+(3, 'payment', 15000.00, 'Project advance', 15000.00, 'System'),
+(3, 'order', 6500.00, 'E-commerce platform', 8500.00, 'System')
+ON CONFLICT DO NOTHING;
+
 -- Grant necessary permissions
 GRANT ALL ON public.parties TO authenticated;
 GRANT ALL ON public.party_transactions TO authenticated;
 GRANT ALL ON public.party_orders TO authenticated;
+GRANT ALL ON public.job_sheets TO authenticated;
+GRANT ALL ON public.quotation_requests TO authenticated;
+GRANT ALL ON public.users TO authenticated;
 GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO authenticated;
 
 -- Enable RLS (Row Level Security) - Optional but recommended
 ALTER TABLE public.parties ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.party_transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.party_orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.job_sheets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.quotation_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 
 -- Create RLS policies (adjust based on your security requirements)
 CREATE POLICY "Allow all operations for authenticated users" ON public.parties
@@ -152,7 +244,16 @@ CREATE POLICY "Allow all operations for authenticated users" ON public.party_tra
 CREATE POLICY "Allow all operations for authenticated users" ON public.party_orders
     FOR ALL USING (auth.role() = 'authenticated');
 
+CREATE POLICY "Allow all operations for authenticated users" ON public.job_sheets
+    FOR ALL USING (auth.role() = 'authenticated');
+
+CREATE POLICY "Allow all operations for authenticated users" ON public.quotation_requests
+    FOR ALL USING (auth.role() = 'authenticated');
+
+CREATE POLICY "Allow all operations for authenticated users" ON public.users
+    FOR ALL USING (auth.role() = 'authenticated');
+
 -- ==========================================
 -- SETUP COMPLETE!
--- Your parties management system is ready.
+-- Your complete job sheet management system with parties is ready.
 -- ========================================== 
