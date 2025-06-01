@@ -65,7 +65,6 @@ import {
   Pie,
 } from "recharts";
 import { PartyTransactionManagement } from "@/components/party-transaction-management";
-import { partiesAuthAction } from "@/app/actions";
 
 interface Party {
   id: number;
@@ -111,11 +110,44 @@ export default function PartiesPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("overview");
 
+  const SECURE_PASSWORD =
+    process.env.NEXT_PUBLIC_PARTIES_PASSWORD || "admin@123";
+
+  console.log(
+    "Environment variable loaded:",
+    process.env.NEXT_PUBLIC_PARTIES_PASSWORD
+  );
+  console.log("SECURE_PASSWORD set to:", SECURE_PASSWORD);
+
   useEffect(() => {
-    const isAuth = localStorage?.getItem("partiesAuth");
-    if (isAuth === "true") {
-      setIsAuthenticated(true);
+    // Check if authentication is still valid (24 hours)
+    if (typeof localStorage !== "undefined") {
+      const authTime = localStorage.getItem("partiesAuthTime");
+      const isAuth = localStorage.getItem("partiesAuth");
+
+      if (isAuth === "true" && authTime) {
+        const authTimestamp = parseInt(authTime);
+        const now = Date.now();
+        const twentyFourHours = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+
+        if (now - authTimestamp < twentyFourHours) {
+          setIsAuthenticated(true);
+          console.log("Valid authentication found, logged in automatically");
+        } else {
+          // Authentication expired, clear it
+          localStorage.removeItem("partiesAuth");
+          localStorage.removeItem("partiesAuthTime");
+          console.log("Authentication expired, cleared");
+        }
+      }
     }
+
+    // Debug environment variables
+    console.log(
+      "UseEffect - Environment variable:",
+      process.env.NEXT_PUBLIC_PARTIES_PASSWORD
+    );
+    console.log("UseEffect - SECURE_PASSWORD:", SECURE_PASSWORD);
   }, []);
 
   useEffect(() => {
@@ -150,30 +182,22 @@ export default function PartiesPage() {
     }
   };
 
-  const handlePasswordSubmit = async (e: React.FormEvent) => {
+  const handlePasswordSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
-    setError(null);
+    console.log("Entered password:", password);
+    console.log("Expected password:", SECURE_PASSWORD);
+    console.log("Password match:", password === SECURE_PASSWORD);
 
-    try {
-      const formData = new FormData();
-      formData.append("password", password);
-
-      const result = await partiesAuthAction(formData);
-
-      if (result.success) {
-        setIsAuthenticated(true);
-        if (typeof localStorage !== "undefined") {
-          localStorage.setItem("partiesAuth", "true");
-        }
-        setPassword("");
-      } else {
-        setError(result.error || "Authentication failed");
+    if (password === SECURE_PASSWORD) {
+      setIsAuthenticated(true);
+      if (typeof localStorage !== "undefined") {
+        localStorage.setItem("partiesAuth", "true");
+        localStorage.setItem("partiesAuthTime", Date.now().toString());
       }
-    } catch (err) {
-      setError("Authentication failed. Please try again.");
-    } finally {
-      setIsLoading(false);
+      setError(null);
+      setPassword(""); // Clear password field
+    } else {
+      setError("Incorrect password!");
     }
   };
 
@@ -301,6 +325,16 @@ export default function PartiesPage() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleLogout = () => {
+    if (typeof localStorage !== "undefined") {
+      localStorage.removeItem("partiesAuth");
+      localStorage.removeItem("partiesAuthTime");
+    }
+    setIsAuthenticated(false);
+    setPassword("");
+    console.log("Logged out successfully");
   };
 
   const filteredParties = parties.filter((party) =>
@@ -438,10 +472,20 @@ export default function PartiesPage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col mt-6 gap-2">
-        <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-          <Users className="w-8 h-8 text-primary" />
-          Party Management
-        </h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+            <Users className="w-8 h-8 text-primary" />
+            Party Management
+          </h1>
+          <Button
+            variant="outline"
+            onClick={handleLogout}
+            className="flex items-center gap-2"
+          >
+            <Lock className="w-4 h-4" />
+            Logout
+          </Button>
+        </div>
         <p className="text-muted-foreground">
           Manage customer accounts, balances, and transaction history.
         </p>

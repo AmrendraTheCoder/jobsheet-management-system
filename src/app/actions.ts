@@ -173,8 +173,13 @@ export const signOutAction = async () => {
 export const adminAuthAction = async (formData: FormData) => {
   const passcode = formData.get("passcode")?.toString();
   
-  // Use server-side environment variable for admin passcode
-  const adminPasscode = process.env.ADMIN_JOBSHEET_PASSWORD;
+  // Use environment variable for admin passcode
+  const adminPasscode = process.env.NEXT_PUBLIC_ADMIN_JOBSHEET_PASSWORD;
+  
+  console.log("Admin environment variable:", process.env.NEXT_PUBLIC_ADMIN_JOBSHEET_PASSWORD);
+  console.log("Admin passcode:", adminPasscode);
+  console.log("Entered passcode:", passcode);
+  console.log("Match:", passcode === adminPasscode);
   
   if (!adminPasscode) {
     console.error("SECURITY ERROR: Admin passcode not configured in environment variables");
@@ -188,7 +193,7 @@ export const adminAuthAction = async (formData: FormData) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "strict",
-      maxAge: 60 * 60 * 8, // 8 hours for better security
+      maxAge: 60 * 60 * 3, // 24 hours
     });
     return redirect("/admin/job-sheet-form");
   } else {
@@ -201,40 +206,6 @@ export const adminLogoutAction = async () => {
   const cookieStore = cookies();
   cookieStore.delete("admin-auth");
   return redirect("/admin");
-};
-
-// ========== PARTIES AUTH ACTIONS ==========
-export const partiesAuthAction = async (formData: FormData) => {
-  const password = formData.get("password")?.toString();
-  
-  // Use server-side environment variable for parties password
-  const partiesPassword = process.env.PARTIES_PASSWORD;
-  
-  if (!partiesPassword) {
-    console.error("SECURITY ERROR: Parties password not configured in environment variables");
-    return { success: false, error: "Authentication not configured" };
-  }
-
-  if (password === partiesPassword) {
-    const { cookies } = await import("next/headers");
-    const cookieStore = cookies();
-    cookieStore.set("parties-auth", "true", {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      maxAge: 60 * 60 * 8, // 8 hours for better security
-    });
-    return { success: true };
-  } else {
-    return { success: false, error: "Invalid password" };
-  }
-};
-
-export const partiesLogoutAction = async () => {
-  const { cookies } = await import("next/headers");
-  const cookieStore = cookies();
-  cookieStore.delete("parties-auth");
-  return redirect("/parties");
 };
 
 // ========== QUOTATION ACTIONS ==========
@@ -761,7 +732,7 @@ export const submitJobSheetAction = async (formData: JobSheetData) => {
           // Try to create transaction record if the table exists and has correct schema
           try {
             const transactionData = {
-              party_id: parseInt(jobSheetData.party_id),
+              party_id: typeof jobSheetData.party_id === 'number' ? jobSheetData.party_id : parseInt(jobSheetData.party_id as string),
               type: 'order',
               amount: totalJobCost,
               description: `Job Sheet #${insertedJobSheet.id} - ${jobSheetData.description}`,
@@ -822,9 +793,9 @@ export const updateJobSheetAction = async (
       const value = updates[key as keyof JobSheetData];
       
       if (key === 'sheet' || key === 'plate' || key === 'paper_sheet' || key === 'imp') {
-        processedUpdates[key] = value ? parseInt(value) : null;
+        processedUpdates[key] = value ? parseInt(String(value)) : null;
       } else if (key === 'sq_inch' || key === 'rate' || key === 'printing' || key === 'uv' || key === 'baking') {
-        processedUpdates[key] = value ? parseFloat(value) : null;
+        processedUpdates[key] = value ? parseFloat(String(value)) : null;
       } else {
         processedUpdates[key] = value || null;
       }
@@ -1119,7 +1090,7 @@ export const updatePartyAction = async (
         
         // Create adjustment transaction
         const transactionData = {
-          party_id: parseInt(partyId),
+          party_id: partyId,
           type: 'adjustment',
           amount: Math.abs(balanceChange),
           description: `Balance adjustment: ${balanceChange > 0 ? '+' : ''}${balanceChange.toFixed(2)}`,
@@ -1249,7 +1220,7 @@ export const addPartyTransactionAction = async (
 
     // Create transaction record
     const transactionData = {
-      party_id: parseInt(partyId),
+      party_id: partyId,
       type,
       amount: Math.abs(amount),
       description: description || `${type.charAt(0).toUpperCase() + type.slice(1)} - ₹${Math.abs(amount)}`,

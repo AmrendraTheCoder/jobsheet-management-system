@@ -154,68 +154,173 @@ export default function DashboardPage() {
   const loadDashboardData = async () => {
     try {
       setLoading(true);
+      console.log("Loading dashboard data...");
 
-      // Load all necessary data in parallel
-      const [partiesRes, transactionsRes, jobSheetsRes] = await Promise.all([
-        fetch("/api/parties"),
-        fetch("/api/parties/transactions"),
-        fetch("/api/job-sheets"),
-      ]);
+      // Load all necessary data in parallel with timeout and retry
+      const fetchWithTimeout = async (url: string, timeout = 5000) => {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-      if (partiesRes.ok && transactionsRes.ok && jobSheetsRes.ok) {
-        const parties = await partiesRes.json();
-        const transactions = await transactionsRes.json();
-        const jobSheets = await jobSheetsRes.json();
+        try {
+          const response = await fetch(url, {
+            signal: controller.signal,
+            cache: "no-cache",
+            headers: {
+              "Content-Type": "application/json",
+            },
+          });
+          clearTimeout(timeoutId);
+          return response;
+        } catch (error) {
+          clearTimeout(timeoutId);
+          throw error;
+        }
+      };
 
-        const totalBalance = parties.reduce(
-          (sum: number, party: any) => sum + party.balance,
-          0
-        );
-        const totalRevenue = transactions
-          .filter((t: any) => t.type === "payment")
-          .reduce((sum: number, t: any) => sum + t.amount, 0);
+      let partiesRes: Response | null = null;
+      let transactionsRes: Response | null = null;
+      let jobSheetsRes: Response | null = null;
 
-        // Calculate current month stats
-        const currentMonth = new Date().getMonth();
-        const currentYear = new Date().getFullYear();
-        const monthlyJobs =
-          jobSheets.data?.filter((job: any) => {
+      try {
+        [partiesRes, transactionsRes, jobSheetsRes] = await Promise.all([
+          fetchWithTimeout("/api/parties"),
+          fetchWithTimeout("/api/parties/transactions"),
+          fetchWithTimeout("/api/job-sheets"),
+        ]);
+      } catch (fetchError) {
+        console.error("Fetch error:", fetchError);
+        // If fetch fails, try individual requests with fallbacks
+        try {
+          partiesRes = await fetchWithTimeout("/api/parties");
+        } catch {
+          console.warn("Parties API failed, using mock data");
+          partiesRes = null;
+        }
+
+        try {
+          transactionsRes = await fetchWithTimeout("/api/parties/transactions");
+        } catch {
+          console.warn("Transactions API failed, using mock data");
+          transactionsRes = null;
+        }
+
+        try {
+          jobSheetsRes = await fetchWithTimeout("/api/job-sheets");
+        } catch {
+          console.warn("Job sheets API failed, using mock data");
+          jobSheetsRes = null;
+        }
+      }
+
+      console.log("API responses:", {
+        partiesStatus: partiesRes?.status || "failed",
+        transactionsStatus: transactionsRes?.status || "failed",
+        jobSheetsStatus: jobSheetsRes?.status || "failed",
+      });
+
+      // Initialize with fallback data
+      let parties = [];
+      let transactions = [];
+      let jobSheets = { data: [] };
+
+      // Try to get parties data
+      if (partiesRes?.ok) {
+        try {
+          parties = await partiesRes.json();
+          console.log("Parties loaded:", parties?.length);
+        } catch (e) {
+          console.warn("Failed to parse parties JSON:", e);
+        }
+      }
+
+      // Try to get transactions data
+      if (transactionsRes?.ok) {
+        try {
+          transactions = await transactionsRes.json();
+          console.log("Transactions loaded:", transactions?.length);
+        } catch (e) {
+          console.warn("Failed to parse transactions JSON:", e);
+        }
+      }
+
+      // Try to get job sheets data
+      if (jobSheetsRes?.ok) {
+        try {
+          jobSheets = await jobSheetsRes.json();
+          console.log("Job sheets loaded:", jobSheets?.data?.length);
+        } catch (e) {
+          console.warn("Failed to parse job sheets JSON:", e);
+        }
+      }
+
+      console.log("Data loaded:", {
+        partiesCount: parties?.length,
+        transactionsCount: transactions?.length,
+        jobSheetsCount: jobSheets?.data?.length,
+      });
+
+      const totalBalance = Array.isArray(parties)
+        ? parties.reduce(
+            (sum: number, party: any) => sum + (party.balance || 0),
+            0
+          )
+        : 0;
+
+      const totalRevenue = Array.isArray(transactions)
+        ? transactions
+            .filter((t: any) => t.type === "payment")
+            .reduce((sum: number, t: any) => sum + (t.amount || 0), 0)
+        : 0;
+
+      // Calculate current month stats
+      const currentMonth = new Date().getMonth();
+      const currentYear = new Date().getFullYear();
+      const monthlyJobs = Array.isArray(jobSheets.data)
+        ? jobSheets.data.filter((job: any) => {
+            if (!job.created_at) return false;
             const jobDate = new Date(job.created_at);
             return (
               jobDate.getMonth() === currentMonth &&
               jobDate.getFullYear() === currentYear
             );
-          }) || [];
+          })
+        : [];
 
-        const monthlyRevenue = monthlyJobs.reduce(
-          (sum: number, job: any) => sum + (job.total_cost || 0),
-          0
-        );
+      const monthlyRevenue = monthlyJobs.reduce(
+        (sum: number, job: any) => sum + (job.total_cost || 0),
+        0
+      );
 
-        const jobSheetsCount = jobSheets.data?.length || 0;
+      const jobSheetsCount = jobSheets.data?.length || 0;
 
-        setStats({
-          totalJobSheets: jobSheetsCount,
-          totalParties: parties.length || 0,
-          totalBalance,
-          totalRevenue,
-          monthlyRevenue,
-          sheetsProcessed: Math.round(jobSheetsCount * 0.8), // 80% processed
-          impressions: jobSheetsCount * 8 + 25, // Estimate impressions
-          pendingJobs: Math.max(
-            0,
-            jobSheetsCount - Math.round(jobSheetsCount * 0.8)
-          ),
-          recentTransactions: transactions.slice(0, 5) || [],
-          recentJobSheets: jobSheets.data?.slice(0, 5) || [],
-        });
+      const newStats = {
+        totalJobSheets: jobSheetsCount,
+        totalParties: parties?.length || 0,
+        totalBalance,
+        totalRevenue,
+        monthlyRevenue,
+        sheetsProcessed: Math.round(jobSheetsCount * 0.8), // 80% processed
+        impressions: jobSheetsCount * 8 + 25, // Estimate impressions
+        pendingJobs: Math.max(
+          0,
+          jobSheetsCount - Math.round(jobSheetsCount * 0.8)
+        ),
+        recentTransactions: Array.isArray(transactions)
+          ? transactions.slice(0, 5)
+          : [],
+        recentJobSheets: Array.isArray(jobSheets.data)
+          ? jobSheets.data.slice(0, 5)
+          : [],
+      };
 
-        // Update chart data with real data if available
-        if (jobSheetsCount > 0) {
-          // Generate dynamic chart data based on actual job sheets
-          const monthlyData = generateMonthlyChartData(jobSheets.data || []);
-          setChartData(monthlyData);
-        }
+      console.log("Setting new stats:", newStats);
+      setStats(newStats);
+
+      // Update chart data with real data if available
+      if (jobSheetsCount > 0) {
+        // Generate dynamic chart data based on actual job sheets
+        const monthlyData = generateMonthlyChartData(jobSheets.data || []);
+        setChartData(monthlyData);
       }
     } catch (error) {
       console.error("Error loading dashboard data:", error);
