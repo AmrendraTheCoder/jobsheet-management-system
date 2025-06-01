@@ -1307,3 +1307,199 @@ export const getPartyTransactionsAction = async (partyId?: number) => {
     return { success: false, error: error.message || "Unknown error occurred" };
   }
 };
+
+// ========== PARTY CONSTRAINT RESOLUTION ACTIONS ==========
+export const checkPartyDependenciesAction = async (partyId: number) => {
+  const supabase = await createClient();
+
+  try {
+    console.log(`Checking dependencies for party ${partyId}`);
+
+    // Check job sheets that reference this party
+    const { data: jobSheets, error: jobSheetsError } = await supabase
+      .from('job_sheets')
+      .select('id, description, job_date, printing, uv, baking, party_name')
+      .eq('party_id', partyId);
+
+    if (jobSheetsError) {
+      console.error('Error checking job sheets:', jobSheetsError);
+      return { success: false, error: jobSheetsError.message };
+    }
+
+    // Check party transactions
+    const { data: transactions, error: transactionsError } = await supabase
+      .from('party_transactions')
+      .select('id, type, amount, description, created_at')
+      .eq('party_id', partyId);
+
+    if (transactionsError) {
+      console.error('Error checking transactions:', transactionsError);
+      return { success: false, error: transactionsError.message };
+    }
+
+    // Check party orders if they exist
+    let orders = [];
+    try {
+      const { data: ordersData, error: ordersError } = await supabase
+        .from('party_orders')
+        .select('id, order_amount, description, status, created_at')
+        .eq('party_id', partyId);
+
+      if (!ordersError) {
+        orders = ordersData || [];
+      }
+    } catch (err) {
+      console.warn('Party orders table might not exist');
+    }
+
+    const dependencies = {
+      jobSheets: jobSheets || [],
+      transactions: transactions || [],
+      orders: orders
+    };
+
+    const hasJobSheets = dependencies.jobSheets.length > 0;
+    const hasTransactions = dependencies.transactions.length > 0;
+    const hasOrders = dependencies.orders.length > 0;
+
+    return {
+      success: true,
+      data: dependencies,
+      canDelete: !hasJobSheets && !hasTransactions && !hasOrders,
+      message: hasJobSheets || hasTransactions || hasOrders 
+        ? 'This party has associated records that must be handled before deletion'
+        : 'This party can be safely deleted'
+    };
+
+  } catch (error: any) {
+    console.error('Exception in checkPartyDependenciesAction:', error);
+    return { success: false, error: error.message || "Unknown error occurred" };
+  }
+};
+
+export const deletePartyWithDependenciesAction = async (
+  partyId: number, 
+  options: {
+    deleteJobSheets?: boolean;
+    deleteTransactions?: boolean;
+    deleteOrders?: boolean;
+  } = {}
+) => {
+  const supabase = await createClient();
+
+  try {
+    console.log(`Starting party deletion process for party ${partyId} with options:`, options);
+
+    // First check what dependencies exist
+    const dependencyCheck = await checkPartyDependenciesAction(partyId);
+    if (!dependencyCheck.success) {
+      return dependencyCheck;
+    }
+
+    const dependencies = dependencyCheck.data;
+
+    // If user chose to delete job sheets, do it first
+    if (options.deleteJobSheets && dependencies.jobSheets.length > 0) {
+      console.log(`Deleting ${dependencies.jobSheets.length} job sheets...`);
+      
+      for (const jobSheet of dependencies.jobSheets) {
+        const deleteResult = await deleteJobSheetAction(jobSheet.id);
+        if (!deleteResult.success) {
+          return { 
+            success: false, 
+            error: `Failed to delete job sheet ${jobSheet.id}: ${deleteResult.error}` 
+          };
+        }
+      }
+    }
+
+    // If user chose to delete transactions, do it next
+    if (options.deleteTransactions && dependencies.transactions.length > 0) {
+      console.log(`Deleting ${dependencies.transactions.length} transactions...`);
+      
+      const { error: transactionsError } = await supabase
+        .from('party_transactions')
+        .delete()
+        .eq('party_id', partyId);
+
+      if (transactionsError) {
+        return { success: false, error: `Failed to delete transactions: ${transactionsError.message}` };
+      }
+    }
+
+    // If user chose to delete orders, do it next
+    if (options.deleteOrders && dependencies.orders.length > 0) {
+      console.log(`Deleting ${dependencies.orders.length} orders...`);
+      
+      const { error: ordersError } = await supabase
+        .from('party_orders')
+        .delete()
+        .eq('party_id', partyId);
+
+      if (ordersError) {
+        return { success: false, error: `Failed to delete orders: ${ordersError.message}` };
+      }
+    }
+
+    // Now check if we can safely delete the party
+    const finalCheck = await checkPartyDependenciesAction(partyId);
+    if (!finalCheck.success) {
+      return finalCheck;
+    }
+
+    if (!finalCheck.data.canDelete) {
+      return {
+        success: false,
+        error: 'Cannot delete party - still has dependencies that were not cleared',
+        data: finalCheck.data
+      };
+    }
+
+    // Finally delete the party
+    const { error: partyError } = await supabase
+      .from('parties')
+      .delete()
+      .eq('id', partyId);
+
+    if (partyError) {
+      return { success: false, error: `Failed to delete party: ${partyError.message}` };
+    }
+
+    console.log(`Party ${partyId} deleted successfully with all dependencies`);
+    return { 
+      success: true, 
+      message: 'Party and all selected dependencies deleted successfully' 
+    };
+
+  } catch (error: any) {
+    console.error('Exception in deletePartyWithDependenciesAction:', error);
+    return { success: false, error: error.message || "Unknown error occurred" };
+  }
+};
+
+export const removeJobSheetPartyReferenceAction = async (jobSheetId: number) => {
+  const supabase = await createClient();
+
+  try {
+    console.log(`Removing party reference from job sheet ${jobSheetId}`);
+
+    const { data, error } = await supabase
+      .from('job_sheets')
+      .update({ party_id: null })
+      .eq('id', jobSheetId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error removing party reference:', error);
+      return { success: false, error: error.message };
+    }
+
+    console.log(`Party reference removed from job sheet ${jobSheetId}`);
+    return { success: true, data, message: 'Party reference removed from job sheet' };
+
+  } catch (error: any) {
+    console.error('Exception in removeJobSheetPartyReferenceAction:', error);
+    return { success: false, error: error.message || "Unknown error occurred" };
+  }
+};
