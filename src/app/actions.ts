@@ -173,12 +173,12 @@ export const signOutAction = async () => {
 export const adminAuthAction = async (formData: FormData) => {
   const passcode = formData.get("passcode")?.toString();
   
-  // Use environment variable for admin passcode - NEVER hardcode passwords!
-  const adminPasscode = process.env.ADMIN_PASSCODE || process.env.NEXT_PUBLIC_ADMIN_PASSCODE;
+  // Use server-side environment variable for admin passcode
+  const adminPasscode = process.env.ADMIN_JOBSHEET_PASSWORD;
   
   if (!adminPasscode) {
     console.error("SECURITY ERROR: Admin passcode not configured in environment variables");
-    return encodedRedirect("error", "/admin", "Admin authentication not configured");
+    return encodedRedirect("error", "/admin/job-sheet-form", "Admin authentication not configured");
   }
 
   if (passcode === adminPasscode) {
@@ -188,11 +188,11 @@ export const adminAuthAction = async (formData: FormData) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "strict",
-      maxAge: 60 * 60 * 8, // Reduced from 24 hours to 8 hours for better security
+      maxAge: 60 * 60 * 8, // 8 hours for better security
     });
-    return redirect("/admin");
+    return redirect("/admin/job-sheet-form");
   } else {
-    return encodedRedirect("error", "/admin", "Invalid passcode");
+    return encodedRedirect("error", "/admin/job-sheet-form", "Invalid passcode");
   }
 };
 
@@ -201,6 +201,40 @@ export const adminLogoutAction = async () => {
   const cookieStore = cookies();
   cookieStore.delete("admin-auth");
   return redirect("/admin");
+};
+
+// ========== PARTIES AUTH ACTIONS ==========
+export const partiesAuthAction = async (formData: FormData) => {
+  const password = formData.get("password")?.toString();
+  
+  // Use server-side environment variable for parties password
+  const partiesPassword = process.env.PARTIES_PASSWORD;
+  
+  if (!partiesPassword) {
+    console.error("SECURITY ERROR: Parties password not configured in environment variables");
+    return { success: false, error: "Authentication not configured" };
+  }
+
+  if (password === partiesPassword) {
+    const { cookies } = await import("next/headers");
+    const cookieStore = cookies();
+    cookieStore.set("parties-auth", "true", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 60 * 60 * 8, // 8 hours for better security
+    });
+    return { success: true };
+  } else {
+    return { success: false, error: "Invalid password" };
+  }
+};
+
+export const partiesLogoutAction = async () => {
+  const { cookies } = await import("next/headers");
+  const cookieStore = cookies();
+  cookieStore.delete("parties-auth");
+  return redirect("/parties");
 };
 
 // ========== QUOTATION ACTIONS ==========

@@ -65,6 +65,7 @@ import {
   Pie,
 } from "recharts";
 import { PartyTransactionManagement } from "@/components/party-transaction-management";
+import { partiesAuthAction } from "@/app/actions";
 
 interface Party {
   id: number;
@@ -110,8 +111,6 @@ export default function PartiesPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("overview");
 
-  const SECURE_PASSWORD = "admin@123";
-
   useEffect(() => {
     const isAuth = localStorage?.getItem("partiesAuth");
     if (isAuth === "true") {
@@ -151,16 +150,30 @@ export default function PartiesPage() {
     }
   };
 
-  const handlePasswordSubmit = (e: React.FormEvent) => {
+  const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (password === SECURE_PASSWORD) {
-      setIsAuthenticated(true);
-      if (typeof localStorage !== "undefined") {
-        localStorage.setItem("partiesAuth", "true");
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("password", password);
+
+      const result = await partiesAuthAction(formData);
+
+      if (result.success) {
+        setIsAuthenticated(true);
+        if (typeof localStorage !== "undefined") {
+          localStorage.setItem("partiesAuth", "true");
+        }
+        setPassword("");
+      } else {
+        setError(result.error || "Authentication failed");
       }
-      setError(null);
-    } else {
-      setError("Incorrect password!");
+    } catch (err) {
+      setError("Authentication failed. Please try again.");
+    } finally {
+      setIsLoading(false);
     }
   };
 
