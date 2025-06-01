@@ -289,13 +289,16 @@ export default function JobSheetsTable({
 
   return (
     <div className="mt-8">
-      <Card>
+      <Card className="card-shadow">
         <CardHeader>
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <CardTitle className="flex items-center gap-2">
-              <FileText className="w-5 h-5 text-blue-600" />
+              <FileText className="w-5 h-5 text-primary" />
               Job Sheets Management
-              <Badge variant="secondary" className="ml-2">
+              <Badge
+                variant="secondary"
+                className="ml-2 bg-primary/10 text-primary"
+              >
                 {filteredJobSheets.length} of {jobSheets.length}
               </Badge>
             </CardTitle>
@@ -305,7 +308,7 @@ export default function JobSheetsTable({
               <Button
                 onClick={exportToCSV}
                 variant="outline"
-                className="w-full sm:w-auto"
+                className="w-full sm:w-auto border-success/20 hover:border-success/40 hover:bg-success/5"
                 disabled={filteredJobSheets.length === 0}
               >
                 <FileSpreadsheet className="w-4 h-4 mr-2" />
@@ -330,7 +333,7 @@ export default function JobSheetsTable({
               {/* New Job Sheet Button */}
               <Button
                 onClick={() => (window.location.href = "/job-sheet-form")}
-                className="w-full sm:w-auto"
+                className="w-full sm:w-auto bg-primary hover:bg-primary/90"
               >
                 <Plus className="w-4 h-4 mr-2" />
                 New Job Sheet
@@ -342,10 +345,10 @@ export default function JobSheetsTable({
         <CardContent>
           {/* Search Results Info */}
           {searchTerm && (
-            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-              <div className="flex items-center gap-2 text-blue-800">
+            <div className="mb-4 p-3 bg-primary/5 border border-primary/20 rounded-lg">
+              <div className="flex items-center gap-2 text-primary">
                 <Search className="w-4 h-4" />
-                <span className="text-sm">
+                <span className="text-sm font-medium">
                   Showing {filteredJobSheets.length} results for "{searchTerm}"
                 </span>
               </div>
@@ -353,21 +356,41 @@ export default function JobSheetsTable({
           )}
 
           {/* Table */}
-          <div className="rounded-md border overflow-hidden">
+          <div className="rounded-lg border border-border/50 overflow-hidden">
             <Table>
               <TableHeader>
-                <TableRow className="bg-gray-50">
-                  <TableHead className="font-semibold">ID</TableHead>
-                  <TableHead className="font-semibold">Date</TableHead>
-                  <TableHead className="font-semibold">Party Name</TableHead>
-                  <TableHead className="font-semibold">Description</TableHead>
-                  <TableHead className="font-semibold">Size</TableHead>
-                  <TableHead className="font-semibold">GSM</TableHead>
-                  <TableHead className="font-semibold">Job Type</TableHead>
-                  <TableHead className="font-semibold">Impressions</TableHead>
-                  <TableHead className="font-semibold">Total Cost</TableHead>
-                  <TableHead className="font-semibold">Balance</TableHead>
-                  <TableHead className="font-semibold text-right">
+                <TableRow className="bg-muted/30 hover:bg-muted/30">
+                  <TableHead className="font-semibold text-foreground">
+                    ID
+                  </TableHead>
+                  <TableHead className="font-semibold text-foreground">
+                    Date
+                  </TableHead>
+                  <TableHead className="font-semibold text-foreground">
+                    Party Name
+                  </TableHead>
+                  <TableHead className="font-semibold text-foreground">
+                    Description
+                  </TableHead>
+                  <TableHead className="font-semibold text-foreground">
+                    Size
+                  </TableHead>
+                  <TableHead className="font-semibold text-foreground">
+                    GSM
+                  </TableHead>
+                  <TableHead className="font-semibold text-foreground">
+                    Job Type
+                  </TableHead>
+                  <TableHead className="font-semibold text-foreground">
+                    Impressions
+                  </TableHead>
+                  <TableHead className="font-semibold text-foreground">
+                    Total Cost
+                  </TableHead>
+                  <TableHead className="font-semibold text-foreground">
+                    Balance
+                  </TableHead>
+                  <TableHead className="font-semibold text-foreground text-right">
                     Actions
                   </TableHead>
                 </TableRow>
@@ -376,7 +399,7 @@ export default function JobSheetsTable({
                 {filteredJobSheets.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={11} className="text-center py-12">
-                      <div className="flex flex-col items-center gap-3 text-gray-500">
+                      <div className="flex flex-col items-center gap-3 text-muted-foreground">
                         <FileText className="w-12 h-12" />
                         <div>
                           <p className="font-medium">No job sheets found</p>
@@ -391,7 +414,7 @@ export default function JobSheetsTable({
                             onClick={() =>
                               (window.location.href = "/job-sheet-form")
                             }
-                            className="mt-2"
+                            className="mt-2 bg-primary hover:bg-primary/90"
                           >
                             <Plus className="w-4 h-4 mr-2" />
                             Create Job Sheet
@@ -407,16 +430,21 @@ export default function JobSheetsTable({
                     const loading = isLoading[sheet.id];
 
                     return (
-                      <TableRow key={sheet.id} className="hover:bg-gray-50">
+                      <TableRow
+                        key={sheet.id}
+                        className="hover:bg-muted/20 transition-colors"
+                      >
                         <TableCell className="font-medium">
                           <div className="flex items-center gap-2">
-                            <span className="text-blue-600">#{sheet.id}</span>
+                            <span className="text-primary font-semibold">
+                              #{sheet.id}
+                            </span>
                           </div>
                         </TableCell>
 
                         <TableCell>
                           <div className="flex items-center gap-2">
-                            <Calendar className="w-4 h-4 text-gray-400" />
+                            <Calendar className="w-4 h-4 text-muted-foreground" />
                             <span className="text-sm">
                               {formatDate(sheet.job_date)}
                             </span>
@@ -425,7 +453,7 @@ export default function JobSheetsTable({
 
                         <TableCell>
                           <div className="flex items-center gap-2">
-                            <User className="w-4 h-4 text-gray-400" />
+                            <User className="w-4 h-4 text-muted-foreground" />
                             <span className="text-sm font-medium">
                               {sheet.party_name || "No party name"}
                             </span>
@@ -472,13 +500,14 @@ export default function JobSheetsTable({
                                   )
                                 }
                                 disabled={loading}
+                                className="bg-primary hover:bg-primary/90"
                               >
                                 Save
                               </Button>
                             </div>
                           ) : (
                             <div
-                              className="cursor-pointer hover:bg-gray-100 p-1 rounded max-w-xs"
+                              className="cursor-pointer hover:bg-muted/30 p-1 rounded max-w-xs transition-colors"
                               onClick={() => {
                                 setQuickEditId(sheet.id);
                                 setQuickEditValues({
@@ -496,12 +525,12 @@ export default function JobSheetsTable({
 
                         <TableCell>
                           <div className="flex items-center gap-2">
-                            <Layers className="w-4 h-4 text-gray-400" />
+                            <Layers className="w-4 h-4 text-muted-foreground" />
                             <span className="text-sm font-medium">
                               {sheet.size || "N/A"}
                             </span>
                           </div>
-                          <p className="text-xs text-gray-500">
+                          <p className="text-xs text-muted-foreground">
                             {sheet.sq_inch ? `${sheet.sq_inch} sq in` : ""}
                           </p>
                         </TableCell>
@@ -511,7 +540,7 @@ export default function JobSheetsTable({
                             <div className="font-medium">
                               {sheet.gsm || "N/A"} GSM
                             </div>
-                            <div className="text-gray-500 text-xs">
+                            <div className="text-muted-foreground text-xs">
                               {sheet.paper_sheet || 0} paper sheets
                             </div>
                           </div>
@@ -524,7 +553,11 @@ export default function JobSheetsTable({
                                 ? "secondary"
                                 : "default"
                             }
-                            className="text-xs"
+                            className={`text-xs ${
+                              sheet.job_type === "front-back"
+                                ? "bg-primary/10 text-primary"
+                                : "bg-muted text-muted-foreground"
+                            }`}
                           >
                             {sheet.job_type === "front-back"
                               ? "Front-Back"
@@ -539,7 +572,7 @@ export default function JobSheetsTable({
                             <div className="font-medium">
                               {sheet.imp?.toLocaleString() || 0}
                             </div>
-                            <div className="text-gray-500">
+                            <div className="text-muted-foreground">
                               {sheet.plate || 0} plates
                             </div>
                           </div>
@@ -547,12 +580,12 @@ export default function JobSheetsTable({
 
                         <TableCell>
                           <div className="flex items-center gap-2">
-                            <Banknote className="w-4 h-4 text-green-600" />
+                            <Banknote className="w-4 h-4 text-success" />
                             <div>
-                              <div className="font-semibold text-green-700">
+                              <div className="font-semibold text-success">
                                 {formatCurrency(totalCost)}
                               </div>
-                              <div className="text-xs text-gray-500">
+                              <div className="text-xs text-muted-foreground">
                                 Rate: {formatCurrency(sheet.rate || 0)}
                               </div>
                             </div>
@@ -565,7 +598,7 @@ export default function JobSheetsTable({
                               <div className="font-semibold text-sm">
                                 ₹{(sheet.party_balance_after ?? 0).toFixed(2)}
                               </div>
-                              <div className="text-xs text-gray-500">
+                              <div className="text-xs text-muted-foreground">
                                 {sheet.party_name}
                               </div>
                             </div>
@@ -578,6 +611,7 @@ export default function JobSheetsTable({
                               variant="ghost"
                               size="sm"
                               onClick={() => setSelectedJobSheet(sheet)}
+                              className="hover:bg-primary/10 hover:text-primary"
                             >
                               <Eye className="w-4 h-4" />
                             </Button>
@@ -588,6 +622,7 @@ export default function JobSheetsTable({
                                   variant="ghost"
                                   size="sm"
                                   disabled={loading}
+                                  className="hover:bg-muted/50"
                                 >
                                   <MoreHorizontal className="w-4 h-4" />
                                 </Button>
@@ -623,7 +658,7 @@ export default function JobSheetsTable({
                                   <AlertDialogTrigger asChild>
                                     <DropdownMenuItem
                                       onSelect={(e) => e.preventDefault()}
-                                      className="text-red-600"
+                                      className="text-destructive focus:text-destructive"
                                     >
                                       <Trash2 className="w-4 h-4 mr-2" />
                                       Delete
@@ -647,7 +682,7 @@ export default function JobSheetsTable({
                                       </AlertDialogCancel>
                                       <AlertDialogAction
                                         onClick={() => handleDelete(sheet.id)}
-                                        className="bg-red-600 hover:bg-red-700"
+                                        className="bg-destructive hover:bg-destructive/90"
                                       >
                                         Delete
                                       </AlertDialogAction>
@@ -668,15 +703,15 @@ export default function JobSheetsTable({
 
           {/* Table Footer with Summary */}
           {filteredJobSheets.length > 0 && (
-            <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+            <div className="mt-4 p-4 bg-muted/20 rounded-lg border border-border/30">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                 <div>
-                  <p className="text-gray-600">Total Job Sheets</p>
+                  <p className="text-muted-foreground">Total Job Sheets</p>
                   <p className="font-semibold">{filteredJobSheets.length}</p>
                 </div>
                 <div>
-                  <p className="text-gray-600">Total Revenue</p>
-                  <p className="font-semibold text-green-600">
+                  <p className="text-muted-foreground">Total Revenue</p>
+                  <p className="font-semibold text-success">
                     {formatCurrency(
                       filteredJobSheets.reduce(
                         (sum, sheet) => sum + getTotalCost(sheet),
@@ -686,7 +721,7 @@ export default function JobSheetsTable({
                   </p>
                 </div>
                 <div>
-                  <p className="text-gray-600">Total Sheets</p>
+                  <p className="text-muted-foreground">Total Sheets</p>
                   <p className="font-semibold">
                     {filteredJobSheets
                       .reduce((sum, sheet) => sum + (sheet.paper_sheet || 0), 0)
@@ -694,7 +729,7 @@ export default function JobSheetsTable({
                   </p>
                 </div>
                 <div>
-                  <p className="text-gray-600">Total Impressions</p>
+                  <p className="text-muted-foreground">Total Impressions</p>
                   <p className="font-semibold">
                     {filteredJobSheets
                       .reduce((sum, sheet) => sum + (sheet.imp || 0), 0)

@@ -9,8 +9,28 @@ import {
   Activity,
   Target,
   Banknote,
+  BarChart3,
+  LineChart,
+  PieChart,
 } from "lucide-react";
 import { JobSheetStats, JobSheetChartData } from "@/types/jobsheet";
+import {
+  LineChart as RechartsLineChart,
+  Line,
+  AreaChart,
+  Area,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  PieChart as RechartsPieChart,
+  Cell,
+  Pie,
+} from "recharts";
 
 interface JobSheetDashboardStatsProps {
   stats: JobSheetStats;
@@ -57,10 +77,36 @@ export default function JobSheetDashboardStats({
   // Use provided chart data directly since parent component handles fallback
   const displayChartData = chartData || [];
 
+  // Custom tooltip formatter for currency
+  const formatTooltipValue = (value: any, name: string) => {
+    if (name === "revenue") {
+      return [formatCurrency(value), "Revenue"];
+    }
+    if (name === "jobs") {
+      return [value, "Jobs"];
+    }
+    if (name === "sheets") {
+      return [formatNumber(value), "Sheets"];
+    }
+    return [value, name];
+  };
+
+  // Colors for charts
+  const colors = {
+    primary: "#3b82f6",
+    secondary: "#10b981",
+    tertiary: "#f59e0b",
+    accent: "#8b5cf6",
+  };
+
+  // Pie chart data for job distribution
+  const jobDistributionData = [
+    { name: "This Month", value: stats.thisMonthJobs, color: colors.primary },
+    { name: "Last Month", value: stats.lastMonthJobs, color: colors.secondary },
+  ];
+
   return (
-    <div className="space-y-6 mt-8">
-      {" "}
-      {/* Added top margin */}
+    <div className="space-y-8 mt-8">
       {/* Overview Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {/* Total Job Sheets */}
@@ -147,6 +193,206 @@ export default function JobSheetDashboardStats({
           </CardContent>
         </Card>
       </div>
+
+      {/* Charts Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Revenue Trend Chart */}
+        <Card className="shadow-lg">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <LineChart className="w-5 h-5 text-blue-600" />
+              Revenue Trend
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="h-80">
+              <ResponsiveContainer width="100%" height="100%">
+                <RechartsLineChart data={displayChartData}>
+                  <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                  <XAxis
+                    dataKey="month"
+                    tick={{ fontSize: 12 }}
+                    tickLine={{ stroke: "#e5e7eb" }}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 12 }}
+                    tickLine={{ stroke: "#e5e7eb" }}
+                    tickFormatter={(value) => `₹${(value / 1000).toFixed(0)}K`}
+                  />
+                  <Tooltip
+                    formatter={formatTooltipValue}
+                    labelStyle={{ color: "#374151" }}
+                    contentStyle={{
+                      backgroundColor: "#f9fafb",
+                      border: "1px solid #e5e7eb",
+                      borderRadius: "8px",
+                    }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="revenue"
+                    stroke={colors.primary}
+                    strokeWidth={3}
+                    dot={{ fill: colors.primary, strokeWidth: 2, r: 4 }}
+                    activeDot={{ r: 6 }}
+                  />
+                </RechartsLineChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Jobs Count Chart */}
+        <Card className="shadow-lg">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <BarChart3 className="w-5 h-5 text-green-600" />
+              Monthly Jobs
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="h-80">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={displayChartData}>
+                  <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                  <XAxis
+                    dataKey="month"
+                    tick={{ fontSize: 12 }}
+                    tickLine={{ stroke: "#e5e7eb" }}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 12 }}
+                    tickLine={{ stroke: "#e5e7eb" }}
+                  />
+                  <Tooltip
+                    formatter={formatTooltipValue}
+                    labelStyle={{ color: "#374151" }}
+                    contentStyle={{
+                      backgroundColor: "#f9fafb",
+                      border: "1px solid #e5e7eb",
+                      borderRadius: "8px",
+                    }}
+                  />
+                  <Bar
+                    dataKey="jobs"
+                    fill={colors.secondary}
+                    radius={[4, 4, 0, 0]}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Sheets Processed Area Chart */}
+        <Card className="shadow-lg">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Layers className="w-5 h-5 text-purple-600" />
+              Sheets Processed
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="h-80">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={displayChartData}>
+                  <defs>
+                    <linearGradient
+                      id="colorSheets"
+                      x1="0"
+                      y1="0"
+                      x2="0"
+                      y2="1"
+                    >
+                      <stop
+                        offset="5%"
+                        stopColor={colors.accent}
+                        stopOpacity={0.8}
+                      />
+                      <stop
+                        offset="95%"
+                        stopColor={colors.accent}
+                        stopOpacity={0.2}
+                      />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                  <XAxis
+                    dataKey="month"
+                    tick={{ fontSize: 12 }}
+                    tickLine={{ stroke: "#e5e7eb" }}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 12 }}
+                    tickLine={{ stroke: "#e5e7eb" }}
+                  />
+                  <Tooltip
+                    formatter={formatTooltipValue}
+                    labelStyle={{ color: "#374151" }}
+                    contentStyle={{
+                      backgroundColor: "#f9fafb",
+                      border: "1px solid #e5e7eb",
+                      borderRadius: "8px",
+                    }}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="sheets"
+                    stroke={colors.accent}
+                    strokeWidth={2}
+                    fillOpacity={1}
+                    fill="url(#colorSheets)"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Job Distribution Pie Chart */}
+        <Card className="shadow-lg">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <PieChart className="w-5 h-5 text-orange-600" />
+              Monthly Comparison
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="h-80">
+              <ResponsiveContainer width="100%" height="100%">
+                <RechartsPieChart>
+                  <Pie
+                    data={jobDistributionData}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    label={({ name, value, percent }) =>
+                      `${name}: ${value} (${(percent * 100).toFixed(0)}%)`
+                    }
+                    outerRadius={80}
+                    fill="#8884d8"
+                    dataKey="value"
+                  >
+                    {jobDistributionData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    formatter={(value: any) => [value, "Jobs"]}
+                    contentStyle={{
+                      backgroundColor: "#f9fafb",
+                      border: "1px solid #e5e7eb",
+                      borderRadius: "8px",
+                    }}
+                  />
+                  <Legend />
+                </RechartsPieChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Additional Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card>
