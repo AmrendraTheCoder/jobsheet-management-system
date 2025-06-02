@@ -432,38 +432,122 @@ export default function PartiesPage() {
 
   if (!isAuthenticated) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Card className="w-full max-w-md">
-          <CardHeader className="text-center">
-            <CardTitle className="flex items-center justify-center gap-2">
-              <Lock className="w-5 h-5" />
-              Party Management Access
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handlePasswordSubmit} className="space-y-4">
-              <div>
-                <Label htmlFor="password">Enter Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter access password"
-                  required
-                />
+      <div className="mt-16 flex items-center justify-center p-4">
+        <div className="w-full max-w-md">
+          {/* Header Section */}
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl shadow-lg mb-6">
+              <Users className="w-8 h-8 text-white" />
+            </div>
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">
+              Party Management
+            </h1>
+            <p className="text-gray-600">
+              Secure access to customer account management
+            </p>
+          </div>
+
+          {/* Authentication Card */}
+          <Card className="shadow-xl border-0 bg-white/80 backdrop-blur-sm">
+            <CardHeader className="text-center pb-6">
+              <div className="flex items-center justify-center w-12 h-12 bg-gray-100 rounded-lg mb-4 mx-auto">
+                <Lock className="w-5 h-5 text-gray-700" />
               </div>
-              {error && (
-                <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">
-                  {error}
+              <CardTitle className="text-xl font-semibold text-gray-900">
+                Secure Access
+              </CardTitle>
+              <p className="text-sm text-gray-600 mt-2">
+                Enter your credentials to continue
+              </p>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <form onSubmit={handlePasswordSubmit} className="space-y-6">
+                <div className="space-y-2">
+                  <Label
+                    htmlFor="password"
+                    className="text-sm font-medium text-gray-700"
+                  >
+                    Password
+                  </Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Enter your password"
+                    required
+                    className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500 rounded-lg transition-colors"
+                  />
                 </div>
-              )}
-              <Button type="submit" className="w-full">
-                Access Party Management
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
+
+                {error && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 bg-red-500 rounded-full flex items-center justify-center">
+                        <Lock className="w-2 h-2 text-white" />
+                      </div>
+                      <span className="text-sm text-red-700 font-medium">
+                        {error}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                <Button
+                  type="submit"
+                  className="w-full h-11 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-medium rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-[1.02]"
+                >
+                  Access Management System
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+
+          {/* Features Section */}
+          <div className="grid grid-cols-3 gap-4 mt-8">
+            <div className="text-center">
+              <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center mx-auto mb-2">
+                <Users className="w-5 h-5 text-blue-600" />
+              </div>
+              <p className="text-xs text-gray-600 font-medium">
+                Customer Management
+              </p>
+            </div>
+            <div className="text-center">
+              <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center mx-auto mb-2">
+                <Receipt className="w-5 h-5 text-green-600" />
+              </div>
+              <p className="text-xs text-gray-600 font-medium">
+                Transaction History
+              </p>
+            </div>
+            <div className="text-center">
+              <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center mx-auto mb-2">
+                <IndianRupee className="w-5 h-5 text-purple-600" />
+              </div>
+              <p className="text-xs text-gray-600 font-medium">
+                Financial Analytics
+              </p>
+            </div>
+          </div>
+
+          {/* Security Notice */}
+          <div className="mt-8 p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-gray-200 rounded-lg flex items-center justify-center">
+                <Lock className="w-4 h-4 text-gray-600" />
+              </div>
+              <div>
+                <h4 className="text-sm font-semibold text-gray-900">
+                  Secure Access
+                </h4>
+                <p className="text-xs text-gray-600">
+                  Protected by enterprise-level security protocols
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
