@@ -55,6 +55,12 @@ interface DashboardStats {
   pendingJobs: number;
   recentTransactions: any[];
   recentJobSheets: any[];
+  totalPayments: number;
+  totalOrders: number;
+  roi: number;
+  estimatedCosts: number;
+  grossProfit: number;
+  transactionVolume: number;
 }
 
 export default function DashboardPage() {
@@ -69,6 +75,12 @@ export default function DashboardPage() {
     pendingJobs: 0,
     recentTransactions: [],
     recentJobSheets: [],
+    totalPayments: 0,
+    totalOrders: 0,
+    roi: 0,
+    estimatedCosts: 0,
+    grossProfit: 0,
+    transactionVolume: 0,
   });
   const [loading, setLoading] = useState(true);
 
@@ -259,6 +271,18 @@ export default function DashboardPage() {
         jobSheetsCount: jobSheets?.data?.length,
       });
 
+      // Filter out deleted transactions for accurate analytics
+      const activeTransactions = Array.isArray(transactions)
+        ? transactions.filter((t: any) => !t.is_deleted)
+        : [];
+
+      console.log(
+        "Active transactions:",
+        activeTransactions.length,
+        "Total transactions:",
+        transactions?.length
+      );
+
       const totalBalance = Array.isArray(parties)
         ? parties.reduce(
             (sum: number, party: any) => sum + (party.balance || 0),
@@ -266,15 +290,62 @@ export default function DashboardPage() {
           )
         : 0;
 
-      const totalRevenue = Array.isArray(transactions)
-        ? transactions
-            .filter((t: any) => t.type === "payment")
-            .reduce((sum: number, t: any) => sum + (t.amount || 0), 0)
+      // Calculate total revenue from active payments only
+      const totalPayments = activeTransactions
+        .filter((t: any) => t.type === "payment")
+        .reduce((sum: number, t: any) => sum + (t.amount || 0), 0);
+
+      // Calculate total orders from active transactions
+      const totalOrders = activeTransactions
+        .filter((t: any) => t.type === "order")
+        .reduce((sum: number, t: any) => sum + (t.amount || 0), 0);
+
+      // Portfolio Performance = Total Revenue from job sheets + payment transactions
+      const jobSheetRevenue = Array.isArray(jobSheets.data)
+        ? jobSheets.data.reduce(
+            (sum: number, job: any) =>
+              sum +
+              parseFloat(job.printing || 0) +
+              parseFloat(job.uv || 0) +
+              parseFloat(job.baking || 0),
+            0
+          )
         : 0;
 
-      // Calculate current month stats
+      const portfolioPerformance = jobSheetRevenue; // Use job sheet revenue as primary metric
+
+      // Calculate volume from active transactions and job sheets
+      const transactionVolume = activeTransactions.length;
+      const jobSheetVolume = jobSheets?.data?.length || 0;
+      const totalVolume = Math.max(transactionVolume, jobSheetVolume);
+
+      // Calculate impressions from job sheets
+      const totalImpressions = Array.isArray(jobSheets.data)
+        ? jobSheets.data.reduce(
+            (sum: number, job: any) => sum + parseInt(job.imp || 0),
+            0
+          )
+        : 25; // fallback
+
+      // Calculate ROI = (Revenue - Costs) / Costs * 100
+      // For printing business, typical costs are 60-70% of revenue
+      const estimatedCosts = portfolioPerformance * 0.65; // 65% cost ratio
+      const grossProfit = portfolioPerformance - estimatedCosts;
+      const roi = estimatedCosts > 0 ? (grossProfit / estimatedCosts) * 100 : 0;
+
+      // Calculate current month stats from active data only
       const currentMonth = new Date().getMonth();
       const currentYear = new Date().getFullYear();
+
+      const monthlyActiveTransactions = activeTransactions.filter((t: any) => {
+        if (!t.created_at) return false;
+        const transactionDate = new Date(t.created_at);
+        return (
+          transactionDate.getMonth() === currentMonth &&
+          transactionDate.getFullYear() === currentYear
+        );
+      });
+
       const monthlyJobs = Array.isArray(jobSheets.data)
         ? jobSheets.data.filter((job: any) => {
             if (!job.created_at) return false;
@@ -287,7 +358,11 @@ export default function DashboardPage() {
         : [];
 
       const monthlyRevenue = monthlyJobs.reduce(
-        (sum: number, job: any) => sum + (job.total_cost || 0),
+        (sum: number, job: any) =>
+          sum +
+          parseFloat(job.printing || 0) +
+          parseFloat(job.uv || 0) +
+          parseFloat(job.baking || 0),
         0
       );
 
@@ -297,20 +372,25 @@ export default function DashboardPage() {
         totalJobSheets: jobSheetsCount,
         totalParties: parties?.length || 0,
         totalBalance,
-        totalRevenue,
+        totalRevenue: portfolioPerformance, // Use portfolio performance as main revenue metric
         monthlyRevenue,
         sheetsProcessed: Math.round(jobSheetsCount * 0.8), // 80% processed
-        impressions: jobSheetsCount * 8 + 25, // Estimate impressions
+        impressions: totalImpressions,
         pendingJobs: Math.max(
           0,
           jobSheetsCount - Math.round(jobSheetsCount * 0.8)
         ),
-        recentTransactions: Array.isArray(transactions)
-          ? transactions.slice(0, 5)
-          : [],
+        recentTransactions: activeTransactions.slice(0, 5), // Only active transactions
         recentJobSheets: Array.isArray(jobSheets.data)
           ? jobSheets.data.slice(0, 5)
           : [],
+        // Add new metrics for ROI calculation
+        totalPayments,
+        totalOrders,
+        roi,
+        estimatedCosts,
+        grossProfit,
+        transactionVolume,
       };
 
       console.log("Setting new stats:", newStats);
@@ -336,6 +416,12 @@ export default function DashboardPage() {
         pendingJobs: 0,
         recentTransactions: [],
         recentJobSheets: [],
+        totalPayments: 0,
+        totalOrders: 0,
+        roi: 0,
+        estimatedCosts: 0,
+        grossProfit: 0,
+        transactionVolume: 0,
       });
     } finally {
       setLoading(false);
@@ -515,14 +601,20 @@ export default function DashboardPage() {
                   </h3>
                   <Badge
                     variant="secondary"
-                    className="bg-success/10 text-success"
+                    className={`${stats.roi > 20 ? "bg-success/10 text-success" : stats.roi > 10 ? "bg-warning/10 text-warning" : "bg-destructive/10 text-destructive"}`}
                   >
-                    +5.2%
+                    {stats.roi > 0 ? "+" : ""}
+                    {stats.roi.toFixed(1)}%
                   </Badge>
                 </div>
                 <p className="text-sm text-muted-foreground mt-1">
                   Total revenue generated
                 </p>
+                {stats.grossProfit > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Profit: {formatCurrency(stats.grossProfit)}
+                  </p>
+                )}
               </div>
               <div className="h-12 w-12 rounded-full bg-success/10 flex items-center justify-center">
                 <TrendingUp className="h-6 w-6 text-success" />
@@ -541,7 +633,7 @@ export default function DashboardPage() {
                 </p>
                 <div className="flex items-baseline gap-2">
                   <h3 className="text-2xl font-bold">
-                    {formatNumber(stats.impressions)}
+                    {formatNumber(stats.transactionVolume)}
                   </h3>
                   <Badge
                     variant="secondary"
@@ -551,7 +643,7 @@ export default function DashboardPage() {
                   </Badge>
                 </div>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Total impressions processed
+                  Total transactions processed
                 </p>
               </div>
               <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
@@ -568,8 +660,15 @@ export default function DashboardPage() {
               <div>
                 <p className="text-sm font-medium text-muted-foreground">ROI</p>
                 <div className="flex items-baseline gap-2">
-                  <h3 className="text-2xl font-bold text-success">+12.5%</h3>
-                  <TrendingUp className="h-4 w-4 text-success" />
+                  <h3 className="text-2xl font-bold text-success">
+                    {stats.roi > 0 ? "+" : ""}
+                    {stats.roi.toFixed(1)}%
+                  </h3>
+                  {stats.roi > 0 ? (
+                    <TrendingUp className="h-4 w-4 text-success" />
+                  ) : (
+                    <TrendingDown className="h-4 w-4 text-destructive" />
+                  )}
                 </div>
                 <p className="text-sm text-muted-foreground mt-1">
                   Return on investment
@@ -631,12 +730,16 @@ export default function DashboardPage() {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <Badge variant="outline">24h Change +2.1%</Badge>
               <Badge variant="outline">
-                Volume {formatCurrency(stats.monthlyRevenue)}
+                24h Change {stats.roi > 0 ? "+" : ""}
+                {(stats.roi * 0.1).toFixed(1)}%
+              </Badge>
+              <Badge variant="outline">
+                Volume {formatNumber(stats.transactionVolume)}
               </Badge>
               <Badge variant="outline" className="text-success">
-                ROI +12.5%
+                ROI {stats.roi > 0 ? "+" : ""}
+                {stats.roi.toFixed(1)}%
               </Badge>
             </div>
           </div>

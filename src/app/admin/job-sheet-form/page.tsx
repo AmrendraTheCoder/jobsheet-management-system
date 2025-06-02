@@ -126,39 +126,14 @@ export default async function AdminJobSheetPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
-      <div className="container mx-auto px-4 py-8 space-y-8">
+    <div className="">
+      <div className="container">
         {/* Enhanced Header for Authenticated State */}
-        <div className="text-center space-y-6">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-blue-600 to-purple-700 rounded-2xl shadow-xl mb-4">
-            <BarChart3 className="w-8 h-8 text-white" />
-          </div>
-          <div>
-            <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-gray-900 via-blue-800 to-purple-800 bg-clip-text text-transparent mb-4">
-              Analytics Dashboard
-            </h1>
-            <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-              Real-time insights and comprehensive reporting for your printing
-              business
-            </p>
-          </div>
-        </div>
 
         {/* Enhanced Dashboard Container */}
-        <Card className="backdrop-blur-xl bg-white/70 border-0 shadow-2xl rounded-3xl overflow-hidden">
-          <CardHeader className="bg-gradient-to-r from-blue-50/80 via-purple-50/80 to-indigo-50/80 border-b border-gray-200/50 p-8">
-            <CardTitle className="flex items-center gap-3 text-2xl font-bold text-gray-900">
-              <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-purple-700 rounded-xl flex items-center justify-center">
-                <BarChart3 className="w-5 h-5 text-white" />
-              </div>
-              Job Sheet Analytics Hub
-            </CardTitle>
-            <p className="text-gray-600 text-lg mt-2">
-              Monitor performance, track progress, and optimize your business
-              operations
-            </p>
-          </CardHeader>
-          <CardContent className="p-8">
+        <Card className="overflow-hidden">
+          
+          <CardContent className="">
             <JobSheetAdminDashboard />
           </CardContent>
         </Card>

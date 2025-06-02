@@ -57,6 +57,7 @@ interface JobSheetData {
   paper_type?: string | null;
   paper_size?: string | null;
   paper_gsm?: number | null;
+  plate_code?: string;
 }
 
 interface Party {
@@ -85,9 +86,12 @@ const initialFormData: JobSheetData = {
   uv: "",
   baking: "",
   job_type: "single-single",
+  plate_code: "",
 };
 
 const paperSizes = [
+  "12*23",
+  "13*25",
   "14*22",
   "15*25",
   "18*23",
@@ -151,6 +155,11 @@ export default function JobSheetForm() {
   const [paperType, setPaperType] = useState<string>("");
   const [paperSize, setPaperSize] = useState<string>("");
   const [paperGSM, setPaperGSM] = useState<string>("");
+
+  // Size management states
+  const [customSizes, setCustomSizes] = useState<string[]>([]);
+  const [showSizeDialog, setShowSizeDialog] = useState(false);
+  const [newSize, setNewSize] = useState("");
 
   // Dialog states
   const [showNewPartyDialog, setShowNewPartyDialog] = useState(false);
@@ -233,16 +242,26 @@ export default function JobSheetForm() {
     if (!newPaperType.name.trim()) return;
 
     try {
+      const requestBody = {
+        name: newPaperType.name.trim(),
+        ...(newPaperType.gsm && { gsm: parseInt(newPaperType.gsm) }),
+      };
+
       const response = await fetch("/api/paper-types", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: newPaperType.name.trim(),
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (response.ok) {
+        const createdType = await response.json();
         await fetchPaperTypes();
+
+        // Set the newly created paper type as selected in the "Paper provided by party" section
+        if (paperProvidedByParty) {
+          setPaperType(newPaperType.name.trim());
+        }
+
         setShowNewPaperTypeDialog(false);
         setNewPaperType({ name: "", gsm: "" });
       }
@@ -251,14 +270,65 @@ export default function JobSheetForm() {
     }
   };
 
+  const handleAddSize = () => {
+    if (!newSize.trim()) return;
+
+    const [length, width] = newSize
+      .split("*")
+      .map((num) => parseFloat(num.trim()));
+    if (isNaN(length) || isNaN(width)) {
+      alert("Please enter valid numbers for length and width");
+      return;
+    }
+
+    const formattedSize = `${length}*${width}`;
+    if (
+      !customSizes.includes(formattedSize) &&
+      !paperSizes.includes(formattedSize)
+    ) {
+      setCustomSizes((prev) => [...prev, formattedSize]);
+      setShowSizeDialog(false);
+      setNewSize("");
+
+      // Auto-select the newly added size in main form
+      handleSizeChange(formattedSize);
+
+      // Also set the size in "Paper provided by party" section if that's active
+      if (paperProvidedByParty) {
+        setPaperSize(formattedSize);
+      }
+    } else {
+      alert("This size already exists");
+    }
+  };
+
+  const getAllSizes = () => {
+    return [...paperSizes, ...customSizes];
+  };
+
   const calculatePrintingCost = () => {
     const rate = parseFloat(formData.rate) || 0;
     const imp = parseFloat(formData.imp) || 0;
+    const plateCode = parseFloat(formData.plate_code || "0") || 0;
+    const plateCount = parseFloat(formData.plate) || 0;
 
+    let basePrintingCost = 0;
     if (formData.job_type === "front-back") {
-      return ((rate * imp) / 2).toFixed(2);
+      basePrintingCost = (rate * imp) / 2;
+    } else {
+      basePrintingCost = rate * imp;
     }
-    return (rate * imp).toFixed(2);
+
+    // Add plate code cost (plate code × number of plates)
+    const plateCost = plateCode * plateCount;
+
+    return (basePrintingCost + plateCost).toFixed(2);
+  };
+
+  const getPlateCodeCost = () => {
+    const plateCode = parseFloat(formData.plate_code || "0") || 0;
+    const plateCount = parseFloat(formData.plate) || 0;
+    return (plateCode * plateCount).toFixed(2);
   };
 
   const handleSizeChange = (value: string) => {
@@ -539,13 +609,30 @@ export default function JobSheetForm() {
               <SelectValue placeholder="Select paper size" />
             </SelectTrigger>
             <SelectContent>
-              {paperSizes.map((size) => (
+              {getAllSizes().map((size) => (
                 <SelectItem key={size} value={size}>
                   {size}
+                  {customSizes.includes(size) && (
+                    <Badge variant="secondary" className="ml-2 text-xs">
+                      Custom
+                    </Badge>
+                  )}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowSizeDialog(true)}
+              className="h-7 px-2 text-xs hover:bg-primary/5 text-primary"
+            >
+              <Plus className="w-3 h-3 mr-1" />
+              Add Size
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -663,14 +750,27 @@ export default function JobSheetForm() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
               <div className="space-y-2">
                 <Label>Paper Type</Label>
-                <Select value={paperType} onValueChange={setPaperType}>
+                <Select
+                  value={paperType}
+                  onValueChange={(value) => {
+                    if (value === "new") {
+                      setShowNewPaperTypeDialog(true);
+                    } else {
+                      setPaperType(value);
+                    }
+                  }}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Select paper type" />
                   </SelectTrigger>
                   <SelectContent>
+                    {/* Original hardcoded options */}
+                    <div className="px-2 py-1 text-xs text-gray-500 font-medium uppercase tracking-wider">
+                      Standard Types
+                    </div>
                     {[
                       "FRC",
-                      "DUOLEX",
+                      "DUPLEX",
                       "SBS",
                       "ART PAPER",
                       "MAIFLITO",
@@ -680,23 +780,105 @@ export default function JobSheetForm() {
                         {type}
                       </SelectItem>
                     ))}
+
+                    {/* Dynamic paper types from database */}
+                    {paperTypes.length > 0 && (
+                      <>
+                        <div className="px-2 py-1 text-xs text-gray-500 font-medium uppercase tracking-wider border-t mt-1 pt-2">
+                          Custom Types
+                        </div>
+                        {paperTypes.map((type) => (
+                          <SelectItem
+                            key={`custom-${type.id}`}
+                            value={type.name}
+                          >
+                            {type.name}
+                          </SelectItem>
+                        ))}
+                      </>
+                    )}
+
+                    {/* Add new option */}
+                    <div className="border-t mt-1 pt-1">
+                      <SelectItem value="new">
+                        <div className="flex items-center gap-2 text-blue-600">
+                          <Plus className="w-4 h-4" />
+                          Add New Paper Type
+                        </div>
+                      </SelectItem>
+                    </div>
                   </SelectContent>
                 </Select>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowNewPaperTypeDialog(true)}
+                  className="h-7 px-2 text-xs w-full"
+                >
+                  <Plus className="w-3 h-3 mr-1" />
+                  Add Paper Type
+                </Button>
               </div>
               <div className="space-y-2">
                 <Label>Paper Size</Label>
-                <Select value={paperSize} onValueChange={setPaperSize}>
+                <Select
+                  value={paperSize}
+                  onValueChange={(value) => {
+                    if (value === "new") {
+                      setShowSizeDialog(true);
+                    } else {
+                      setPaperSize(value);
+                    }
+                  }}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Select paper size" />
                   </SelectTrigger>
                   <SelectContent>
+                    {/* Standard sizes */}
+                    <div className="px-2 py-1 text-xs text-gray-500 font-medium uppercase tracking-wider">
+                      Standard Sizes
+                    </div>
                     {paperSizes.map((size) => (
                       <SelectItem key={size} value={size}>
                         {size}
                       </SelectItem>
                     ))}
+
+                    {/* Custom sizes */}
+                    {customSizes.length > 0 && (
+                      <>
+                        <div className="px-2 py-1 text-xs text-gray-500 font-medium uppercase tracking-wider border-t mt-1 pt-2">
+                          Custom Sizes
+                        </div>
+                        {customSizes.map((size) => (
+                          <SelectItem key={`custom-${size}`} value={size}>
+                            {size}
+                          </SelectItem>
+                        ))}
+                      </>
+                    )}
+
+                    {/* Add new option */}
+                    <div className="border-t mt-1 pt-1">
+                      <SelectItem value="new">
+                        <div className="flex items-center gap-2 text-blue-600">
+                          <Plus className="w-4 h-4" />
+                          Add New Size
+                        </div>
+                      </SelectItem>
+                    </div>
                   </SelectContent>
                 </Select>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowSizeDialog(true)}
+                  className="h-7 px-2 text-xs w-full"
+                >
+                  <Plus className="w-3 h-3 mr-1" />
+                  Add Size
+                </Button>
               </div>
               <div className="space-y-2">
                 <Label>Paper GSM</Label>
@@ -705,11 +887,44 @@ export default function JobSheetForm() {
                     <SelectValue placeholder="Select GSM" />
                   </SelectTrigger>
                   <SelectContent>
+                    {/* Standard GSM values */}
+                    <div className="px-2 py-1 text-xs text-gray-500 font-medium uppercase tracking-wider">
+                      Standard GSM
+                    </div>
                     {paperGSMs.map((gsm) => (
                       <SelectItem key={gsm} value={gsm.toString()}>
                         {gsm} GSM
                       </SelectItem>
                     ))}
+
+                    {/* Custom input option */}
+                    <div className="border-t mt-1 pt-1">
+                      <div className="px-2 py-2">
+                        <Label className="text-xs text-gray-500 mb-1 block">
+                          Or enter custom GSM:
+                        </Label>
+                        <Input
+                          type="number"
+                          placeholder="Enter GSM"
+                          className="h-8 text-sm"
+                          onBlur={(e) => {
+                            const value = e.target.value;
+                            if (value && !isNaN(Number(value))) {
+                              setPaperGSM(value);
+                            }
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              const value = (e.target as HTMLInputElement)
+                                .value;
+                              if (value && !isNaN(Number(value))) {
+                                setPaperGSM(value);
+                              }
+                            }
+                          }}
+                        />
+                      </div>
+                    </div>
                   </SelectContent>
                 </Select>
               </div>
@@ -736,6 +951,24 @@ export default function JobSheetForm() {
           />
         </div>
         <div className="space-y-2">
+          <Label htmlFor="plate_code">Plate Code (per plate)</Label>
+          <Input
+            id="plate_code"
+            type="number"
+            step="0.01"
+            min="0"
+            placeholder="5.00"
+            value={formData.plate_code || ""}
+            onChange={(e) => updateFormData("plate_code", e.target.value)}
+          />
+          <p className="text-xs text-gray-500">
+            Will be multiplied by number of plates ({formData.plate || "0"})
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="space-y-2">
           <Label htmlFor="printing_calculated">
             Printing Cost (Calculated)
           </Label>
@@ -748,8 +981,23 @@ export default function JobSheetForm() {
           />
           <p className="text-xs text-gray-500">
             {formData.job_type === "front-back"
-              ? "Rate × Impressions ÷ 2"
-              : "Rate × Impressions"}
+              ? "Rate × Impressions ÷ 2 + Plate Code × Plates"
+              : "Rate × Impressions + Plate Code × Plates"}
+          </p>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="plate_cost_calculated">
+            Plate Code Cost (Calculated)
+          </Label>
+          <Input
+            id="plate_cost_calculated"
+            type="text"
+            value={`₹${getPlateCodeCost()}`}
+            className="bg-gray-50"
+            readOnly
+          />
+          <p className="text-xs text-gray-500">
+            {formData.plate_code || "0"} × {formData.plate || "0"} plates
           </p>
         </div>
       </div>
@@ -788,7 +1036,25 @@ export default function JobSheetForm() {
         </CardHeader>
         <CardContent className="space-y-2 text-sm">
           <div className="flex justify-between">
-            <span className="text-blue-700">Printing Cost:</span>
+            <span className="text-blue-700">Base Printing Cost:</span>
+            <span className="font-medium text-blue-900">
+              ₹
+              {(
+                parseFloat(calculatePrintingCost()) -
+                parseFloat(getPlateCodeCost())
+              ).toFixed(2)}
+            </span>
+          </div>
+          {parseFloat(getPlateCodeCost()) > 0 && (
+            <div className="flex justify-between">
+              <span className="text-blue-700">Plate Code Cost:</span>
+              <span className="font-medium text-blue-900">
+                ₹{getPlateCodeCost()}
+              </span>
+            </div>
+          )}
+          <div className="flex justify-between">
+            <span className="text-blue-700">Total Printing Cost:</span>
             <span className="font-medium text-blue-900">
               ₹{calculatePrintingCost()}
             </span>
@@ -942,15 +1208,15 @@ export default function JobSheetForm() {
               </h4>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-4">
                 <div>
-                  <span className="font-medium">Rate:</span> ₹
+                  <span className="font-medium">Rate per Unit:</span> ₹
                   {formData.rate || "0.00"}
                 </div>
                 <div>
-                  <span className="font-medium">Printing:</span> ₹
-                  {calculatePrintingCost()}
+                  <span className="font-medium">Plate Code:</span> ₹
+                  {formData.plate_code || "0.00"}
                 </div>
                 <div>
-                  <span className="font-medium">UV:</span> ₹
+                  <span className="font-medium">UV Coating:</span> ₹
                   {formData.uv || "0.00"}
                 </div>
                 <div>
@@ -958,10 +1224,81 @@ export default function JobSheetForm() {
                   {formData.baking || "0.00"}
                 </div>
               </div>
+
+              {/* Detailed Cost Calculation */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                <h5 className="font-medium text-blue-900 mb-3">
+                  Detailed Cost Calculation
+                </h5>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-blue-700">Base Printing Cost:</span>
+                    <span className="font-medium text-blue-900">
+                      ₹
+                      {(
+                        parseFloat(calculatePrintingCost()) -
+                        parseFloat(getPlateCodeCost())
+                      ).toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="text-xs text-blue-600 ml-4">
+                    {formData.job_type === "front-back"
+                      ? `Rate (₹${formData.rate || 0}) × Impressions (${formData.imp || 0}) ÷ 2`
+                      : `Rate (₹${formData.rate || 0}) × Impressions (${formData.imp || 0})`}
+                  </div>
+
+                  {parseFloat(getPlateCodeCost()) > 0 && (
+                    <>
+                      <div className="flex justify-between">
+                        <span className="text-blue-700">Plate Code Cost:</span>
+                        <span className="font-medium text-blue-900">
+                          ₹{getPlateCodeCost()}
+                        </span>
+                      </div>
+                      <div className="text-xs text-blue-600 ml-4">
+                        Plate Code (₹{formData.plate_code || 0}) × Plates (
+                        {formData.plate || 0})
+                      </div>
+                    </>
+                  )}
+
+                  <div className="border-t border-blue-300 pt-2">
+                    <div className="flex justify-between font-semibold">
+                      <span className="text-blue-700">
+                        Total Printing Cost:
+                      </span>
+                      <span className="text-blue-900">
+                        ₹{calculatePrintingCost()}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between">
+                    <span className="text-blue-700">UV Coating:</span>
+                    <span className="font-medium text-blue-900">
+                      ₹{formData.uv || "0.00"}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between">
+                    <span className="text-blue-700">Baking:</span>
+                    <span className="font-medium text-blue-900">
+                      ₹{formData.baking || "0.00"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
               <div className="p-4 bg-primary/10 rounded-lg border border-primary/20">
                 <div className="text-xl font-bold text-primary">
                   Total Cost: ₹{totalCost}
                 </div>
+                {selectedParty && (
+                  <div className="mt-2 text-sm text-primary/80">
+                    Party balance after this job: ₹
+                    {(selectedParty.balance - parseFloat(totalCost)).toFixed(2)}
+                  </div>
+                )}
               </div>
             </div>
           </CardContent>
@@ -1096,35 +1433,34 @@ export default function JobSheetForm() {
         )}
       </div>
 
-      {/* Add New Party Dialog */}
+      {/* New Party Dialog */}
       <Dialog open={showNewPartyDialog} onOpenChange={setShowNewPartyDialog}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Add New Party</DialogTitle>
             <DialogDescription>
-              Create a new party for the job sheet.
+              Create a new party account for the job sheet.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="new_party_name">Party Name</Label>
+            <div>
+              <Label htmlFor="new-party-name">Party Name</Label>
               <Input
-                id="new_party_name"
+                id="new-party-name"
                 value={newPartyName}
                 onChange={(e) => setNewPartyName(e.target.value)}
                 placeholder="Enter party name"
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="new_party_balance">
-                Initial Balance (Optional)
-              </Label>
+            <div>
+              <Label htmlFor="new-party-balance">Initial Balance</Label>
               <Input
-                id="new_party_balance"
+                id="new-party-balance"
                 type="number"
+                step="0.01"
                 value={newPartyBalance}
                 onChange={(e) => setNewPartyBalance(e.target.value)}
-                placeholder="0"
+                placeholder="0.00"
               />
             </div>
           </div>
@@ -1140,7 +1476,7 @@ export default function JobSheetForm() {
         </DialogContent>
       </Dialog>
 
-      {/* Add New Paper Type Dialog */}
+      {/* New Paper Type Dialog */}
       <Dialog
         open={showNewPaperTypeDialog}
         onOpenChange={setShowNewPaperTypeDialog}
@@ -1149,20 +1485,36 @@ export default function JobSheetForm() {
           <DialogHeader>
             <DialogTitle>Add New Paper Type</DialogTitle>
             <DialogDescription>
-              Create a new paper type for the job sheet.
+              Create a new paper type for the inventory.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="new_paper_type_name">Paper Type Name</Label>
+            <div>
+              <Label htmlFor="new-paper-type-name">Paper Type Name</Label>
               <Input
-                id="new_paper_type_name"
+                id="new-paper-type-name"
                 value={newPaperType.name}
                 onChange={(e) =>
                   setNewPaperType({ ...newPaperType, name: e.target.value })
                 }
-                placeholder="e.g., Matte, Glossy, Art Paper"
+                placeholder="Enter paper type name (e.g., PREMIUM ART, MATTE FINISH)"
               />
+            </div>
+            <div>
+              <Label htmlFor="new-paper-type-gsm">Default GSM (Optional)</Label>
+              <Input
+                id="new-paper-type-gsm"
+                type="number"
+                value={newPaperType.gsm}
+                onChange={(e) =>
+                  setNewPaperType({ ...newPaperType, gsm: e.target.value })
+                }
+                placeholder="Enter default GSM (e.g., 250)"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                This is just a default reference. You can still specify
+                different GSM values when using this paper type.
+              </p>
             </div>
           </div>
           <DialogFooter>
@@ -1173,6 +1525,50 @@ export default function JobSheetForm() {
               Cancel
             </Button>
             <Button onClick={handleAddNewPaperType}>Add Paper Type</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Size Management Dialog */}
+      <Dialog open={showSizeDialog} onOpenChange={setShowSizeDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Custom Size</DialogTitle>
+            <DialogDescription>
+              Add a new paper size to the available options.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="new-size">Size (Length × Width)</Label>
+              <Input
+                id="new-size"
+                value={newSize}
+                onChange={(e) => setNewSize(e.target.value)}
+                placeholder="e.g., 20*30"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Enter in format: length*width (e.g., 20*30)
+              </p>
+            </div>
+            {customSizes.length > 0 && (
+              <div>
+                <Label>Your Custom Sizes:</Label>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {customSizes.map((size) => (
+                    <Badge key={size} variant="secondary">
+                      {size}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowSizeDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleAddSize}>Add Size</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

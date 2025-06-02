@@ -44,6 +44,7 @@ import {
   TrendingUp,
   TrendingDown,
   AlertCircle,
+  Trash2,
 } from "lucide-react";
 
 interface Party {
@@ -64,6 +65,11 @@ interface Transaction {
   balance_after: number;
   created_at: string;
   created_by?: string;
+  // Soft delete fields
+  is_deleted?: boolean;
+  deleted_at?: string | null;
+  deletion_reason?: string | null;
+  deleted_by?: string | null;
 }
 
 interface TransactionFormData {
@@ -98,6 +104,10 @@ export function PartyTransactionManagement() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState<string>("all");
   const [filterParty, setFilterParty] = useState<string>("all");
+
+  // Soft delete dialog states
+  const [softDeleteId, setSoftDeleteId] = useState<number | null>(null);
+  const [deletionReason, setDeletionReason] = useState("");
 
   // Load data
   useEffect(() => {
@@ -223,6 +233,58 @@ export function PartyTransactionManagement() {
     setShowTransactionDialog(true);
   };
 
+  const handleSoftDeleteTransaction = async (id: number, reason: string) => {
+    try {
+      if (!reason.trim()) {
+        setError("Deletion reason is required");
+        return;
+      }
+
+      const response = await fetch(`/api/transactions/${id}/soft-delete`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          deletion_reason: reason.trim(),
+          deleted_by: "Admin", // You can make this dynamic based on current user
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to delete transaction");
+      }
+
+      // Update local state to mark as deleted
+      setTransactions((prev) =>
+        prev.map((transaction) =>
+          transaction.id === id
+            ? {
+                ...transaction,
+                is_deleted: true,
+                deleted_at: new Date().toISOString(),
+                deletion_reason: reason.trim(),
+                deleted_by: "Admin",
+              }
+            : transaction
+        )
+      );
+
+      // Reset dialog state
+      setSoftDeleteId(null);
+      setDeletionReason("");
+      setError(null);
+
+      // Reload data to ensure consistency
+      setTimeout(() => {
+        loadData();
+      }, 100);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to delete transaction"
+      );
+    }
+  };
+
   const getTransactionIcon = (type: string) => {
     switch (type) {
       case "payment":
@@ -242,17 +304,23 @@ export function PartyTransactionManagement() {
     return "text-gray-600";
   };
 
-  // Calculate summary stats
-  const totalPayments = transactions
+  // Calculate summary stats - exclude deleted transactions
+  const activeTransactions = transactions.filter((t) => !t.is_deleted);
+
+  const totalPayments = activeTransactions
     .filter((t) => t.type === "payment")
     .reduce((sum, t) => sum + t.amount, 0);
 
-  const totalOrders = transactions
+  const totalOrders = activeTransactions
     .filter((t) => t.type === "order")
     .reduce((sum, t) => sum + t.amount, 0);
 
-  const orderCount = transactions.filter((t) => t.type === "order").length;
-  const paymentCount = transactions.filter((t) => t.type === "payment").length;
+  const orderCount = activeTransactions.filter(
+    (t) => t.type === "order"
+  ).length;
+  const paymentCount = activeTransactions.filter(
+    (t) => t.type === "payment"
+  ).length;
 
   const totalBalance = parties.reduce((sum, p) => sum + p.balance, 0);
 
@@ -331,7 +399,9 @@ export function PartyTransactionManagement() {
                 <p className="text-sm text-muted-foreground">
                   Total Transactions
                 </p>
-                <p className="text-2xl font-bold">{transactions.length}</p>
+                <p className="text-2xl font-bold">
+                  {activeTransactions.length}
+                </p>
                 <p className="text-xs text-muted-foreground">All activity</p>
               </div>
               <DollarSign className="w-8 h-8 text-primary" />
@@ -525,11 +595,40 @@ export function PartyTransactionManagement() {
                   </TableRow>
                 ) : (
                   filteredTransactions.map((transaction) => (
-                    <TableRow key={transaction.id}>
+                    <TableRow
+                      key={transaction.id}
+                      className={`${
+                        transaction.is_deleted
+                          ? "bg-red-50 hover:bg-red-100 opacity-75"
+                          : ""
+                      }`}
+                    >
                       <TableCell className="text-sm">
-                        {new Date(transaction.created_at).toLocaleDateString()}
+                        <div>
+                          {new Date(
+                            transaction.created_at
+                          ).toLocaleDateString()}
+                          {transaction.is_deleted && (
+                            <Badge
+                              variant="destructive"
+                              className="ml-2 text-xs"
+                            >
+                              DELETED
+                            </Badge>
+                          )}
+                        </div>
+                        {transaction.is_deleted &&
+                          transaction.deletion_reason && (
+                            <div className="text-xs text-red-600 mt-1">
+                              Reason: {transaction.deletion_reason}
+                            </div>
+                          )}
                       </TableCell>
-                      <TableCell className="font-medium">
+                      <TableCell
+                        className={`font-medium ${
+                          transaction.is_deleted ? "text-red-600" : ""
+                        }`}
+                      >
                         {transaction.party_name}
                       </TableCell>
                       <TableCell>
@@ -543,21 +642,30 @@ export function PartyTransactionManagement() {
                                   ? "secondary"
                                   : "outline"
                             }
+                            className={
+                              transaction.is_deleted ? "opacity-60" : ""
+                            }
                           >
                             {transaction.type.charAt(0).toUpperCase() +
                               transaction.type.slice(1)}
                           </Badge>
                         </div>
                       </TableCell>
-                      <TableCell>{transaction.description}</TableCell>
+                      <TableCell
+                        className={transaction.is_deleted ? "text-red-600" : ""}
+                      >
+                        {transaction.description}
+                      </TableCell>
                       <TableCell className="text-right">
                         <span
                           className={
-                            transaction.type === "payment"
-                              ? "text-green-600"
-                              : transaction.type === "order"
-                                ? "text-red-600"
-                                : "text-orange-600"
+                            transaction.is_deleted
+                              ? "text-red-400 line-through"
+                              : transaction.type === "payment"
+                                ? "text-green-600"
+                                : transaction.type === "order"
+                                  ? "text-red-600"
+                                  : "text-orange-600"
                           }
                         >
                           {transaction.type === "payment"
@@ -569,37 +677,59 @@ export function PartyTransactionManagement() {
                         </span>
                       </TableCell>
                       <TableCell
-                        className={`text-right ${getBalanceColor(transaction.balance_after)}`}
+                        className={`text-right ${
+                          transaction.is_deleted
+                            ? "text-red-400"
+                            : getBalanceColor(transaction.balance_after)
+                        }`}
                       >
                         ₹{Math.abs(transaction.balance_after).toFixed(2)}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              const party = parties.find(
-                                (p) => p.id === transaction.party_id
-                              );
-                              if (party)
-                                openTransactionDialog(party, "payment");
-                            }}
-                          >
-                            <CreditCard className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              const party = parties.find(
-                                (p) => p.id === transaction.party_id
-                              );
-                              if (party) openTransactionDialog(party, "order");
-                            }}
-                          >
-                            <ShoppingCart className="w-4 h-4" />
-                          </Button>
+                          {!transaction.is_deleted && (
+                            <>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  const party = parties.find(
+                                    (p) => p.id === transaction.party_id
+                                  );
+                                  if (party)
+                                    openTransactionDialog(party, "payment");
+                                }}
+                              >
+                                <CreditCard className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  const party = parties.find(
+                                    (p) => p.id === transaction.party_id
+                                  );
+                                  if (party)
+                                    openTransactionDialog(party, "order");
+                                }}
+                              >
+                                <ShoppingCart className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setSoftDeleteId(transaction.id)}
+                                className="text-orange-600 hover:text-orange-700 hover:bg-orange-50"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </>
+                          )}
+                          {transaction.is_deleted && (
+                            <Badge variant="outline" className="text-red-600">
+                              Deleted
+                            </Badge>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -782,6 +912,72 @@ export function PartyTransactionManagement() {
             >
               Add{" "}
               {formData.type.charAt(0).toUpperCase() + formData.type.slice(1)}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Soft Delete Confirmation Dialog */}
+      <Dialog
+        open={softDeleteId !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSoftDeleteId(null);
+            setDeletionReason("");
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Trash2 className="w-5 h-5 text-orange-600" />
+              Delete Transaction
+            </DialogTitle>
+            <DialogDescription>
+              This will mark transaction #{softDeleteId} as deleted while
+              keeping it visible for audit purposes. Please provide a reason for
+              this deletion.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Label htmlFor="deletion-reason" className="text-sm font-medium">
+              Deletion Reason <span className="text-red-500">*</span>
+            </Label>
+            <Textarea
+              id="deletion-reason"
+              value={deletionReason}
+              onChange={(e) => setDeletionReason(e.target.value)}
+              placeholder="Enter reason for deletion..."
+              className="mt-2"
+              autoFocus
+              rows={3}
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setSoftDeleteId(null);
+                setDeletionReason("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (softDeleteId && deletionReason.trim()) {
+                  handleSoftDeleteTransaction(
+                    softDeleteId,
+                    deletionReason.trim()
+                  );
+                } else {
+                  setError("Please provide a reason for deletion");
+                }
+              }}
+              disabled={!deletionReason.trim()}
+              className="bg-orange-600 hover:bg-orange-700"
+            >
+              Mark as Deleted
             </Button>
           </DialogFooter>
         </DialogContent>

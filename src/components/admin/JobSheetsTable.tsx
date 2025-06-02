@@ -57,6 +57,7 @@ import {
   FileSpreadsheet,
 } from "lucide-react";
 import { JobSheet, JobSheetNote } from "@/types/jobsheet";
+import { Label } from "@/components/ui/label";
 
 interface JobSheetsTableProps {
   jobSheets: JobSheet[];
@@ -78,6 +79,10 @@ interface JobSheetsTableProps {
   ) => Promise<{ success: boolean; error?: string }>;
   setSelectedJobSheet: (jobSheet: JobSheet | null) => void;
   onRefresh?: () => Promise<void> | void;
+  softDeleteJobSheet?: (
+    id: number,
+    reason: string
+  ) => Promise<{ success: boolean; error?: string }>;
 }
 
 export default function JobSheetsTable({
@@ -92,6 +97,7 @@ export default function JobSheetsTable({
   generateReport,
   setSelectedJobSheet,
   onRefresh,
+  softDeleteJobSheet,
 }: JobSheetsTableProps) {
   const [isLoading, setIsLoading] = useState<{ [key: number]: boolean }>({});
   const [quickEditId, setQuickEditId] = useState<number | null>(null);
@@ -100,6 +106,10 @@ export default function JobSheetsTable({
   }>({});
   const [newNoteId, setNewNoteId] = useState<number | null>(null);
   const [newNoteText, setNewNoteText] = useState("");
+
+  // Soft delete dialog state
+  const [softDeleteId, setSoftDeleteId] = useState<number | null>(null);
+  const [deletionReason, setDeletionReason] = useState("");
 
   // Filter job sheets
   const filteredJobSheets = jobSheets.filter((sheet) => {
@@ -183,6 +193,7 @@ export default function JobSheetsTable({
       "Impressions",
       "Square Inches",
       "Rate",
+      "Plate Code",
       "Printing Cost",
       "UV Cost",
       "Baking Cost",
@@ -201,6 +212,7 @@ export default function JobSheetsTable({
       sheet.imp || 0,
       sheet.sq_inch || 0,
       sheet.rate || 0,
+      sheet.plate_code || 0,
       sheet.printing || 0,
       sheet.uv || 0,
       sheet.baking || 0,
@@ -257,7 +269,19 @@ export default function JobSheetsTable({
     const result = await deleteJobSheet(id);
     setIsLoading({ ...isLoading, [id]: false });
 
-    if (!result.success) {
+    if (result.success) {
+      console.log(`Job sheet ${id} successfully deleted`);
+
+      // Call refresh callback if provided to ensure dashboard updates
+      if (onRefresh) {
+        await onRefresh();
+      }
+
+      // Show success message
+      alert(
+        "Job sheet deleted successfully. Dashboard stats have been updated."
+      );
+    } else {
       alert(`Failed to delete: ${result.error}`);
     }
   };
@@ -284,6 +308,37 @@ export default function JobSheetsTable({
 
     if (!result.success) {
       alert(`Failed to generate report: ${result.error}`);
+    }
+  };
+
+  const handleSoftDelete = async (id: number, reason: string) => {
+    if (!softDeleteJobSheet) {
+      alert("Soft delete functionality not available");
+      return;
+    }
+
+    setIsLoading({ ...isLoading, [id]: true });
+    const result = await softDeleteJobSheet(id, reason);
+    setIsLoading({ ...isLoading, [id]: false });
+
+    if (result.success) {
+      console.log(`Job sheet ${id} successfully soft deleted`);
+
+      // Call refresh callback if provided to ensure dashboard updates
+      if (onRefresh) {
+        await onRefresh();
+      }
+
+      // Reset dialog state
+      setSoftDeleteId(null);
+      setDeletionReason("");
+
+      // Show success message
+      alert(
+        "Transaction marked as deleted successfully. It remains visible for audit purposes."
+      );
+    } else {
+      alert(`Failed to delete transaction: ${result.error}`);
     }
   };
 
@@ -432,14 +487,34 @@ export default function JobSheetsTable({
                     return (
                       <TableRow
                         key={sheet.id}
-                        className="hover:bg-muted/20 transition-colors"
+                        className={`transition-colors ${
+                          sheet.is_deleted
+                            ? "bg-red-50 hover:bg-red-100 opacity-75"
+                            : "hover:bg-muted/20"
+                        }`}
                       >
                         <TableCell className="font-medium">
                           <div className="flex items-center gap-2">
-                            <span className="text-primary font-semibold">
+                            <span
+                              className={`font-semibold ${
+                                sheet.is_deleted
+                                  ? "text-red-600"
+                                  : "text-primary"
+                              }`}
+                            >
                               #{sheet.id}
                             </span>
+                            {sheet.is_deleted && (
+                              <Badge variant="destructive" className="text-xs">
+                                DELETED
+                              </Badge>
+                            )}
                           </div>
+                          {sheet.is_deleted && sheet.deletion_reason && (
+                            <div className="text-xs text-red-600 mt-1">
+                              Reason: {sheet.deletion_reason}
+                            </div>
+                          )}
                         </TableCell>
 
                         <TableCell>
@@ -524,15 +599,19 @@ export default function JobSheetsTable({
                         </TableCell>
 
                         <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Layers className="w-4 h-4 text-muted-foreground" />
-                            <span className="text-sm font-medium">
-                              {sheet.size || "N/A"}
-                            </span>
+                          <div className="flex items-start gap-2">
+                            <Layers className="w-4 h-4 text-muted-foreground mt-0.5" />
+                            <div className="min-w-0">
+                              <div className="text-sm font-medium">
+                                {sheet.size || "N/A"}
+                              </div>
+                              {sheet.sq_inch && (
+                                <div className="text-xs text-muted-foreground">
+                                  {sheet.sq_inch} sq in
+                                </div>
+                              )}
+                            </div>
                           </div>
-                          <p className="text-xs text-muted-foreground">
-                            {sheet.sq_inch ? `${sheet.sq_inch} sq in` : ""}
-                          </p>
                         </TableCell>
 
                         <TableCell>
@@ -587,6 +666,14 @@ export default function JobSheetsTable({
                               </div>
                               <div className="text-xs text-muted-foreground">
                                 Rate: {formatCurrency(sheet.rate || 0)}
+                                {sheet.plate_code &&
+                                  parseFloat(sheet.plate_code.toString()) >
+                                    0 && (
+                                    <div>
+                                      Plate: ₹{sheet.plate_code} ×{" "}
+                                      {sheet.plate || 0}
+                                    </div>
+                                  )}
                               </div>
                             </div>
                           </div>
@@ -654,6 +741,15 @@ export default function JobSheetsTable({
                                   Generate Report
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
+                                {!sheet.is_deleted && softDeleteJobSheet && (
+                                  <DropdownMenuItem
+                                    onClick={() => setSoftDeleteId(sheet.id)}
+                                    className="text-orange-600 focus:text-orange-600"
+                                  >
+                                    <Trash2 className="w-4 h-4 mr-2" />
+                                    Mark as Deleted
+                                  </DropdownMenuItem>
+                                )}
                                 <AlertDialog>
                                   <AlertDialogTrigger asChild>
                                     <DropdownMenuItem
@@ -661,19 +757,23 @@ export default function JobSheetsTable({
                                       className="text-destructive focus:text-destructive"
                                     >
                                       <Trash2 className="w-4 h-4 mr-2" />
-                                      Delete
+                                      {sheet.is_deleted
+                                        ? "Remove Permanently"
+                                        : "Delete"}
                                     </DropdownMenuItem>
                                   </AlertDialogTrigger>
                                   <AlertDialogContent>
                                     <AlertDialogHeader>
                                       <AlertDialogTitle>
-                                        Delete Job Sheet
+                                        {sheet.is_deleted
+                                          ? "Permanently Delete"
+                                          : "Delete"}{" "}
+                                        Job Sheet
                                       </AlertDialogTitle>
                                       <AlertDialogDescription>
-                                        Are you sure you want to delete job
-                                        sheet #{sheet.id}? This action cannot be
-                                        undone and will also delete all
-                                        associated notes.
+                                        {sheet.is_deleted
+                                          ? `Are you sure you want to permanently delete job sheet #${sheet.id}? This will completely remove it from the database and cannot be undone.`
+                                          : `Are you sure you want to delete job sheet #${sheet.id}? This action cannot be undone and will also delete all associated notes.`}
                                       </AlertDialogDescription>
                                     </AlertDialogHeader>
                                     <AlertDialogFooter>
@@ -684,7 +784,9 @@ export default function JobSheetsTable({
                                         onClick={() => handleDelete(sheet.id)}
                                         className="bg-destructive hover:bg-destructive/90"
                                       >
-                                        Delete
+                                        {sheet.is_deleted
+                                          ? "Remove Permanently"
+                                          : "Delete"}
                                       </AlertDialogAction>
                                     </AlertDialogFooter>
                                   </AlertDialogContent>
@@ -741,6 +843,64 @@ export default function JobSheetsTable({
           )}
         </CardContent>
       </Card>
+
+      {/* Soft Delete Confirmation Dialog */}
+      <AlertDialog
+        open={softDeleteId !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSoftDeleteId(null);
+            setDeletionReason("");
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Mark Transaction as Deleted</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will mark job sheet #{softDeleteId} as deleted while keeping
+              it visible for audit purposes. Please provide a reason for this
+              deletion.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="py-4">
+            <Label htmlFor="deletion-reason" className="text-sm font-medium">
+              Deletion Reason <span className="text-red-500">*</span>
+            </Label>
+            <Input
+              id="deletion-reason"
+              value={deletionReason}
+              onChange={(e) => setDeletionReason(e.target.value)}
+              placeholder="Enter reason for deletion..."
+              className="mt-2"
+              autoFocus
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => {
+                setSoftDeleteId(null);
+                setDeletionReason("");
+              }}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (softDeleteId && deletionReason.trim()) {
+                  handleSoftDelete(softDeleteId, deletionReason.trim());
+                } else {
+                  alert("Please provide a reason for deletion");
+                }
+              }}
+              disabled={!deletionReason.trim()}
+              className="bg-orange-600 hover:bg-orange-700"
+            >
+              Mark as Deleted
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

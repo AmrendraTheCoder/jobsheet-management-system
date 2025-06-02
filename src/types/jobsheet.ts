@@ -13,6 +13,7 @@ export interface JobSheet {
   paper_sheet: number | null;
   imp: number | null;
   rate: number | null;
+  plate_code?: number | null;
   printing: number | null;
   uv: number | null;
   baking: number | null;
@@ -22,7 +23,7 @@ export interface JobSheet {
   paper_type_gsm?: number | null;
   job_type?: string | null;
   party_balance_before?: number | null; // Make it optional with null
-  party_balance_after?: number | null;  // Make it optional with null
+  party_balance_after?: number | null; // Make it optional with null
   file_url?: string | null;
   paper_provided_by_party?: boolean;
   paper_type?: string | null;
@@ -30,6 +31,12 @@ export interface JobSheet {
   paper_gsm?: number | null;
   created_at: string;
   updated_at?: string;
+
+  // Soft delete fields
+  is_deleted?: boolean;
+  deleted_at?: string | null;
+  deletion_reason?: string | null;
+  deleted_by?: string | null;
 
   // Join data from related tables
   parties?: {

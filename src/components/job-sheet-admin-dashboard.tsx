@@ -31,7 +31,8 @@ export default function JobSheetAdminDashboard() {
     deleteJobSheet,
     addNote,
     generateReport,
-    refetch, // Add this line
+    refetch,
+    softDeleteJobSheet,
   } = useJobSheets();
 
   // State for notifications
@@ -108,29 +109,50 @@ export default function JobSheetAdminDashboard() {
 
   // Function to calculate statistics
   const calculateStats = (data: JobSheet[]) => {
+    console.log("Calculating stats for job sheets:", data.length);
+
     const now = new Date();
     const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
 
-    const totalJobSheets = data.length;
+    // Separate active and deleted job sheets
+    const activeData = data.filter((sheet) => !sheet.is_deleted);
+    const deletedData = data.filter((sheet) => sheet.is_deleted);
 
-    const totalRevenue = data.reduce((sum, sheet) => {
+    const totalJobSheets = data.length;
+    const activeJobSheets = activeData.length;
+
+    // Calculate total revenue from active (non-deleted) transactions only
+    const totalRevenue = activeData.reduce((sum, sheet) => {
       // Use correct field names and handle potential null values
       const printing = parseFloat(sheet.printing?.toString() || "0");
       const uv = parseFloat(sheet.uv?.toString() || "0");
       const baking = parseFloat(sheet.baking?.toString() || "0");
       const total = printing + uv + baking;
+
+      // Debug individual sheet calculations
+      if (total > 0) {
+        console.log(
+          `Sheet ${sheet.id} revenue: printing=${printing}, uv=${uv}, baking=${baking}, total=${total}`
+        );
+      }
+
       return sum + total;
     }, 0);
 
-    const avgJobValue = totalJobSheets > 0 ? totalRevenue / totalJobSheets : 0;
+    console.log(
+      `Total revenue calculated from ${activeData.length} active job sheets (${deletedData.length} deleted): ₹${totalRevenue}`
+    );
 
-    const thisMonthJobs = data.filter(
+    const avgJobValue =
+      activeJobSheets > 0 ? totalRevenue / activeJobSheets : 0;
+
+    const thisMonthJobs = activeData.filter(
       (sheet) => sheet.job_date && new Date(sheet.job_date) >= thisMonth
     ).length;
 
-    const lastMonthJobs = data.filter(
+    const lastMonthJobs = activeData.filter(
       (sheet) =>
         sheet.job_date &&
         new Date(sheet.job_date) >= lastMonth &&
@@ -142,19 +164,19 @@ export default function JobSheetAdminDashboard() {
         ? ((thisMonthJobs - lastMonthJobs) / lastMonthJobs) * 100
         : 0;
 
-    // Use correct field names - 'paper_sheet' and 'imp'
-    const totalSheets = data.reduce((sum, sheet) => {
+    // Use correct field names - 'paper_sheet' and 'imp' from active transactions only
+    const totalSheets = activeData.reduce((sum, sheet) => {
       const sheets = parseInt(sheet.paper_sheet?.toString() || "0");
       return sum + sheets;
     }, 0);
-    
-    const totalImpressions = data.reduce((sum, sheet) => {
+
+    const totalImpressions = activeData.reduce((sum, sheet) => {
       const impressions = parseInt(sheet.imp?.toString() || "0");
       return sum + impressions;
     }, 0);
 
-    console.log("Calculated stats:", {
-      totalJobSheets,
+    const newStats = {
+      totalJobSheets: activeJobSheets, // Show only active job sheets in main stats
       totalRevenue,
       avgJobValue,
       thisMonthJobs,
@@ -162,18 +184,16 @@ export default function JobSheetAdminDashboard() {
       revenueGrowth,
       totalSheets,
       totalImpressions,
-    });
+    };
 
-    setStats({
-      totalJobSheets,
-      totalRevenue,
-      avgJobValue,
-      thisMonthJobs,
-      lastMonthJobs,
-      revenueGrowth,
-      totalSheets,
-      totalImpressions,
-    });
+    console.log("Calculated stats (active only):", newStats);
+    console.log(
+      `Total transactions: ${totalJobSheets} (${activeJobSheets} active, ${deletedData.length} deleted)`
+    );
+    console.log("Previous stats for comparison:", stats);
+
+    // Always update stats state to trigger re-render
+    setStats(newStats);
   };
 
   // Function to generate chart data
@@ -347,7 +367,8 @@ export default function JobSheetAdminDashboard() {
           addNote={addNote}
           generateReport={generateReport}
           setSelectedJobSheet={setSelectedJobSheet}
-          // refetch={refetch} // Add this line if you need it
+          onRefresh={refetch}
+          softDeleteJobSheet={softDeleteJobSheet}
         />
 
         {/* Job Sheet Detail Modal */}
