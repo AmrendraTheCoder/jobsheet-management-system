@@ -1,20 +1,43 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+// Handle missing environment variables gracefully
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-if (!supabaseUrl || !supabaseServiceKey) {
-    throw new Error("Missing Supabase environment variables");
+// Create a helper function to check environment variables
+function checkEnvironmentVariables() {
+    if (!supabaseUrl || !supabaseServiceKey) {
+        return {
+            hasError: true,
+            error: "Supabase environment variables are not configured",
+        };
+    }
+    return { hasError: false };
 }
-
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 export async function PATCH(
     request: NextRequest,
     { params }: { params: { id: string } },
 ) {
     try {
+        // Check environment variables first
+        const envCheck = checkEnvironmentVariables();
+        if (envCheck.hasError) {
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: envCheck.error,
+                    message:
+                        "Please configure NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables",
+                },
+                { status: 500 },
+            );
+        }
+
+        // Create Supabase client only after environment check
+        const supabase = createClient(supabaseUrl!, supabaseServiceKey!);
+
         const { deletion_reason, deleted_by } = await request.json();
 
         if (!deletion_reason || !deletion_reason.trim()) {
